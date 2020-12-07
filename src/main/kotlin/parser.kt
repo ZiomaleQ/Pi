@@ -19,7 +19,7 @@ class Parser(private val code: MutableList<Token>) {
     }
 
     private fun letStmt(): ParserObject {
-        val name = consume("VARIABLE", "Expected name after keyword got '${peek().value}'")
+        val name = consume("IDENTIFIER", "Expected name after let keyword got '${peek().value}' (${peek().type})")
         val init = if (match("EQUAL")) expression() else null
         consume("SEMICOLON", "Expect ';' after variable declaration.")
         return ParserObject("Let", mutableMapOf("name" to name.value, "initializer" to init))
@@ -45,22 +45,22 @@ class Parser(private val code: MutableList<Token>) {
           consume("LEFT_PAREN", "Expect '(' after 'for'.")
           var initializer = when(peek().type) {
             "SEMICOLON" -> null
-            "LET" -> letStmt()
+            "LET" -> {advance(); letStmt()}
             else -> expressionStatement()
           }
 
-          val condition = if(!check("SEMICOLON")) expression()
-            else ParserObject("Literal", mutableMapOf("type" to "Boolean", "value" to true)
-          consume("SEMICOLON" to "Expect ';' after loop condition.")
+          val condition = if(peek().type != "SEMICOLON") expression()
+            else ParserObject("Literal", mutableMapOf("type" to "Boolean", "value" to true))
+          consume("SEMICOLON", "Expect ';' after loop condition.")
 
-          val increment = if(!check("RIGHT_PAREN") expression() else null
+          val increment = if(peek().type != "RIGHT_PAREN") expression() else null
           consume("RIGHT_PAREN", "Expect ')' after for loop.")
 
           var body = if(increment == null) statement() else ParserObject("Block", mutableMapOf("code" to listOf(statement(), increment)))
 
           body = ParserObject("While", mutableMapOf("condition" to condition, "body" to body))
 
-          return if(initializer == null) body else ParserObject("Block", mutableMapOf("code" to listOf(initializer, body)))
+          if(initializer == null) body else ParserObject("Block", mutableMapOf("code" to listOf(initializer, body)))
         }
         else -> expressionStatement()
     }
