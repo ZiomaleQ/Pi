@@ -22,8 +22,8 @@ class Tokenizer(private val code: String) {
             var expr: String
             if (peek() == '"') {
                 expr = "${peekNext()}"
-                while (current < code.size && peek() != '"') expr = "$expr${peekNext()}"
-                if (code[current] != '"') throw Error("[$line]Unterminated string")
+                while (current < code.size && peek() != '"') expr = "$expr${peekNext()}";
+                if (peekNext() != '"') throw Error("[$line]Unterminated string")
                 found = tokens.add(Token("STRING", expr, expr.length, line))
             }
             for (rule in rulesLocal[true] ?: listOf()) {
