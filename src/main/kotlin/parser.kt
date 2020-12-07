@@ -82,7 +82,7 @@ class Parser(private val code: MutableList<Token>) {
                 "Unary", mutableMapOf("token" to lastToken.value as String, "right" to expression())
             )
             match("EQUAL") -> when (expr.name) {
-                "Variable" -> ParserObject("Assign", mutableMapOf("name" to lastToken.value, "value" to expression()))
+                "Variable" -> ParserObject("Assign", mutableMapOf("name" to expr["name"], "value" to expression()))
                 "Get" -> ParserObject(
                     "Set", mutableMapOf("parent" to expr["object"], "prop" to expr["name"], "value" to expression())
                 )

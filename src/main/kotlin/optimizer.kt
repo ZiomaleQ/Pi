@@ -1,4 +1,6 @@
 class Optimizer(private var code: MutableList<ParserObject>) {
+    private val variables = mutableMapOf<String, ParserObject>()
+
     fun parse(): MutableList<ParserObject> = optimizeParts()
 
     private fun optimizeParts(): MutableList<ParserObject> {
@@ -13,13 +15,21 @@ class Optimizer(private var code: MutableList<ParserObject>) {
     }
 
     private fun optimizeBinary(binary: ParserObject): ParserObject {
-        val x = optimizeNode(binary["left"] as ParserObject)
-        val y = optimizeNode(binary["right"] as ParserObject)
+        var x = optimizeNode(binary["left"] as ParserObject)
+        if(x.name == "Variable") {
+          if(variables.containsKey(x["name"])) x = variables[x["name"]] as ParserObject
+          else throw Error("Variable not defined")
+        }
+        var y = optimizeNode(binary["right"] as ParserObject)
+        if(y.name == "Variable") {
+          if(variables.containsKey(y["name"])) y = variables[y["name"]] as ParserObject
+          else throw Error("Variable not defined")
+        }
         var z: ParserObject? = null
         if (x.name == "Literal" && y.name == "Literal") {
             when (binary["operator"]) {
                 "AND", "OR" -> {
-                    z = if (x["type"] == y["type"] && x["type"] == "void") x
+                    z = if (x["type"] == y["type"] && x["type"] == "Void") x
                     else ParserObject(
                         "Literal",
                         mutableMapOf(
@@ -29,7 +39,7 @@ class Optimizer(private var code: MutableList<ParserObject>) {
                     )
                 }
                 "GREATER", "GREATER_EQUAL", "LESS", "LESS_EQUAL", "BANG_EQUAL", "EQUAL_EQUAL" -> {
-                    z = if (x["type"] == y["type"] && x["type"] == "void") x
+                    z = if (x["type"] == y["type"] && x["type"] == "Void") x
                     else {
                         val value = when (binary["operator"]) {
                             "GREATER" -> toNumber(x) > toNumber(y)
@@ -44,7 +54,7 @@ class Optimizer(private var code: MutableList<ParserObject>) {
                     }
                 }
                 "PLUS", "SLASH", "STAR", "MINUS" -> {
-                    z = if (x["type"] == y["type"] && x["type"] == "void") x
+                    z = if (x["type"] == y["type"] && x["type"] == "Void") x
                     else {
                         val value: Any = when (binary["operator"]) {
                             "PLUS" -> {
@@ -73,11 +83,11 @@ class Optimizer(private var code: MutableList<ParserObject>) {
         return z ?: binary
     }
 
-    private fun isTruthy(node: ParserObject): Boolean {
-        if (node["type"] == "Boolean") return node["value"] as Boolean
-        if (node["type"] == "Number") return node["value"] as Double > 0
-        if (node["type"] == "String") return (node["value"] as String).isNotEmpty()
-        return false
+    private fun isTruthy(node: ParserObject) = when(node["type"]) {
+      "Boolean" -> node["value"] as Boolean
+      "Number" -> node["value"] as Double != 0
+      "String" -> (node["value"] as String).isNotEmpty()
+      else -> false
     }
 
     private fun toNumber(node: ParserObject): Double = when (node["type"]) {
@@ -107,12 +117,41 @@ class Optimizer(private var code: MutableList<ParserObject>) {
       return expr
     }
 
+    private fun optimizeBlock(expr: ParserObject): ParserObject {
+      val temp = mutableListOf<ParserObject>()
+      for(x in (expr["body"] as List<ParserObject>)) temp.add(optimizeNode(x))
+      expr["body"] = temp
+      return expr
+    }
+
+    private fun optimizeLet(node: ParserObject): ParserObject {
+      if(variables.containsKey(node["name"] as String)) throw Error("Redeclaration of '${node["name"]}' variable." )
+      node["initializer"] = optimizeNode(node["initializer"] as ParserObject)
+      variables[node["name"] as String] = node["initializer"] as ParserObject
+      return node
+    }
+
+    private fun optimizeAssign(node: ParserObject): ParserObject {
+      if(!variables.containsKey(node["name"] as String)) throw Error("Variable not defined")
+      node["value"] = optimizeNode(node["value"] as ParserObject)
+      return node
+    }
+
+    private fun optimizeUnary(node: ParserObject): ParserObject {
+      node["right"] = optimizeNode(node["right"] as ParserObject)
+      return node
+    }
+
     private fun optimizeNode(node: ParserObject): ParserObject = when (node.name) {
             "Expression", "Grouping" -> optimizeNode(node["expr"] as ParserObject)
             "If" -> optimizeIf(node)
             "Binary" -> optimizeBinary(node)
             "Call" -> optimizeCall(node)
             "While" -> optimizeWhile(node)
+            "Block" -> optimizeBlock(node)
+            "Let" -> optimizeLet(node)
+            "Assign" -> optimizeAssign(node)
+            "Unary" -> optimizeUnary(node)
             else -> node
     }
 }
