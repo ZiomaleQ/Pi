@@ -25,10 +25,33 @@ fun main( /* args: Array<String> */) {
         temp = parseCode("""for(let x = 0; x < 0; x = x + 1) print(x);""")
         for (x in temp) println(x)
 
+        println("\nPrint with let example:")
+        println("Code: " + "'let x = 0; print(x);'")
+        temp = parseCode("let x = 0; print(x);")
+        for (x in temp) println(x)
+
+        println("\nReasign example:")
+        println("Code: " + "'let x = 1; x = x + 1; print(x);'")
+         temp = parseCode("let x = 1; x = x + 1; print(x);")
+        for (x in temp) println(x)
+
+        println("\n2 Let example [ERROR]:")
+        println("Code: " + """'let x = 0; let x = 1;'""")
+        try {
+          temp = parseCode("""let x = 0; let x = 1;""")
+        } catch(err: Error) { println(err.message) }
+
+        println("\nUndefined variable example [ERROR]:")
+        println("Code: " + """'x = x + 1;'""")
+        try {
+          temp = parseCode("""x = x + 1;""")
+        } catch(err: Error) { println(err.message) }
+
 }
 
-fun parseCode(code: String): MutableList<ParserObject> {
+fun parseCode(code: String, debug: Boolean = false): MutableList<ParserObject> {
   var tokens = scanTokens(code)
   val temp = Parser(tokens).parse()
+  if(debug) {for (x in temp) println(x)}
   return Optimizer(temp).parse()
 }
