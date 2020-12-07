@@ -14,15 +14,24 @@ class Parser(private val code: MutableList<Token>) {
     }
 
     private fun declaration(): ParserObject = when {
-        match("LET") -> letStmt()
-        else -> statement()
-    }
+        match("LET") -> {
+          val name = consume("IDENTIFIER", "Expected name after let keyword got '${peek().value}' (${peek().type})")
+          val init = if (match("EQUAL")) expression() else null
+          consume("SEMICOLON", "Expect ';' after variable declaration.")
+          ParserObject("Let", mutableMapOf("name" to name.value, "initializer" to init))
+        }
+        match("FUN") -> {
+          val name = consume("IDENTIFIER", "Expected name after fun keyword got '${peek().value}' (${peek().type})")
+          val args = mutableListOf<Token>()
 
-    private fun letStmt(): ParserObject {
-        val name = consume("IDENTIFIER", "Expected name after let keyword got '${peek().value}' (${peek().type})")
-        val init = if (match("EQUAL")) expression() else null
-        consume("SEMICOLON", "Expect ';' after variable declaration.")
-        return ParserObject("Let", mutableMapOf("name" to name.value, "initializer" to init))
+          if (peek().type != "RIGHT_PAREN") {
+              do { args.add(consume("IDENTIFIER", "Only identifiers in function args")) } while (match("COMMA"))
+          }
+          consume("RIGHT_PAREN", "Expected ')' after arguments, got ${peek().value}")
+          consume("LEFT_BRACE", "Expect '{' before function body, got ${peek().value}")
+          ParserObject("Call", mutableMapOf("name" to name, "parameters" to args, "body" to block()))
+        }
+        else -> statement()
     }
 
     private fun statement(): ParserObject = when {
@@ -45,7 +54,7 @@ class Parser(private val code: MutableList<Token>) {
           consume("LEFT_PAREN", "Expect '(' after 'for'.")
           var initializer = when(peek().type) {
             "SEMICOLON" -> null
-            "LET" -> {advance(); letStmt()}
+            "LET" -> {declaration()}
             else -> expressionStatement()
           }
 
@@ -62,7 +71,15 @@ class Parser(private val code: MutableList<Token>) {
 
           if(initializer == null) body else ParserObject("Block", mutableMapOf("body" to listOf(initializer, body)))
         }
+        match("LEFT_BRACE") -> block()
         else -> expressionStatement()
+    }
+
+    private fun block(): ParserObject {
+      val statements: MutableList<ParserObject> = ArrayList()
+      while (peek().type == "RIGHT_BRACE" && peek().type != "EOT") statements.add(declaration())
+      consume("RIGHT_BRACE", "Expect '}' after block.")
+      return ParserObject("Block", mutableMapOf("body" to statements))
     }
 
     private fun expressionStatement(): ParserObject {
