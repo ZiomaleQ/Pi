@@ -2,9 +2,9 @@ class Optimizer(private var code: MutableList<ParserObject>) {
     private val variables = mutableMapOf<String, ParserObject>()
     private var optimizedCode = mutableListOf<ParserObject>()
 
-    fun parse(): MutableList<ParserObject> = {
+    fun parse(): MutableList<ParserObject> {
       for (x in code) optimizedCode.add(optimizeNode(x))
-      optimizedCode
+      return optimizedCode
     }
 
     private fun optimizeCall(call: ParserObject): ParserObject {
@@ -83,7 +83,7 @@ class Optimizer(private var code: MutableList<ParserObject>) {
 
     private fun isTruthy(node: ParserObject) = when(node["type"]) {
       "Boolean" -> node["value"] as Boolean
-      "Number" -> node["value"] as Double != 0
+      "Number" -> node["value"] as Double != 0.0
       "String" -> (node["value"] as String).isNotEmpty()
       else -> false
     }
