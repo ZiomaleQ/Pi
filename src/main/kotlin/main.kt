@@ -50,7 +50,7 @@ fun parseExamples() {
 
   println("\nFunction example:")
   println("Code: " + "'fun x(y) {return y + 1;}'")
-   temp = parseCode("let x = 1; x = x + 1; print(x);")
+   temp = parseCode("fun x(y) {return y + 1;}")
   for (x in temp) println(x)
 
   println("\n2 Let example [ERROR]:")

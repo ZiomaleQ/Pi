@@ -22,14 +22,16 @@ class Parser(private val code: MutableList<Token>) {
         }
         match("FUN") -> {
           val name = consume("IDENTIFIER", "Expected name after fun keyword got '${peek().value}' (${peek().type})")
-          val args = mutableListOf<Token>()
+          consume("LEFT_PAREN", "Expected '(' after name, got ${peek().value}")
+
+          val args = mutableListOf<String>()
 
           if (peek().type != "RIGHT_PAREN") {
-              do { args.add(consume("IDENTIFIER", "Only identifiers in function args")) } while (match("COMMA"))
+              do { args.add(consume("IDENTIFIER", "Only identifiers in function args got '${peek().value}'")?.value ?: "") } while (match("COMMA"))
           }
           consume("RIGHT_PAREN", "Expected ')' after arguments, got ${peek().value}")
           consume("LEFT_BRACE", "Expect '{' before function body, got ${peek().value}")
-          ParserObject("Call", mutableMapOf("name" to name, "parameters" to args, "body" to block()))
+          ParserObject("Function", mutableMapOf("name" to name.value, "parameters" to args, "body" to block()))
         }
         else -> statement()
     }
@@ -72,13 +74,16 @@ class Parser(private val code: MutableList<Token>) {
           if(initializer == null) body else ParserObject("Block", mutableMapOf("body" to listOf(initializer, body)))
         }
         match("LEFT_BRACE") -> block()
+        match("RETURN") -> {
+          ParserObject("Return", mutableMapOf("expr" to expressionStatement()))
+        }
         else -> expressionStatement()
     }
 
     private fun block(): ParserObject {
       val statements: MutableList<ParserObject> = ArrayList()
-      while (peek().type == "RIGHT_BRACE" && peek().type != "EOT") statements.add(declaration())
-      consume("RIGHT_BRACE", "Expect '}' after block.")
+      while (peek().type != "RIGHT_BRACE" && peek().type != "EOF") statements.add(declaration())
+      consume("RIGHT_BRACE", "Expect '}' after block, got ${peek().value}")
       return ParserObject("Block", mutableMapOf("body" to statements))
     }
 
