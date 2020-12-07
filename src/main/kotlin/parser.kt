@@ -22,7 +22,7 @@ class Parser(private val code: MutableList<Token>) {
         val name = consume("VARIABLE", "Expected name after keyword got '${peek().value}'")
         val init = if (match("EQUAL")) expression() else null
         consume("SEMICOLON", "Expect ';' after variable declaration.")
-        return ParserObject("Let", mapOf("name" to name.value, "initializer" to init))
+        return ParserObject("Let", mutableMapOf("name" to name.value, "initializer" to init))
     }
 
     private fun statement(): ParserObject = when {
@@ -32,7 +32,14 @@ class Parser(private val code: MutableList<Token>) {
             consume("RIGHT_PAREN", "Expect ')' after if condition.")
             val thenBranch = statement()
             val elseBranch = if (match("ELSE")) statement() else null
-            ParserObject("If", mapOf("condition" to condition, "thenBranch" to thenBranch, "elseBranch" to elseBranch))
+            ParserObject("If", mutableMapOf("condition" to condition, "thenBranch" to thenBranch, "elseBranch" to elseBranch))
+        }
+        match("WHILE") -> {
+          consume("LEFT_PAREN", "Expect '(' after 'while'.")
+          val condition = expression()
+          consume("RIGHT_PAREN", "Expect ')' after while condition.")
+          val body = statement()
+          ParserObject("While", mutableMapOf("condition" to condition, "body" to body))
         }
         else -> expressionStatement()
     }
@@ -40,7 +47,7 @@ class Parser(private val code: MutableList<Token>) {
     private fun expressionStatement(): ParserObject {
         val temp = expression()
         consume("SEMICOLON", "Expected semicolon after expression, got '${peek().value}'")
-        return ParserObject("Expression", mapOf("expr" to temp))
+        return ParserObject("Expression", mutableMapOf("expr" to temp))
     }
 
     private fun expression(): ParserObject {
@@ -49,14 +56,14 @@ class Parser(private val code: MutableList<Token>) {
             match(
                 "AND", "OR", "GREATER", "GREATER_EQUAL", "LESS", "PLUS",
                 "LESS_EQUAL", "BANG_EQUAL", "EQUAL_EQUAL", "SLASH", "STAR", "MINUS"
-            ) -> ParserObject("Binary", mapOf("left" to expr, "operator" to lastToken.type, "right" to expression()))
+            ) -> ParserObject("Binary", mutableMapOf("left" to expr, "operator" to lastToken.type, "right" to expression()))
             match("BANG", "MINUS") -> ParserObject(
-                "Unary", mapOf("token" to lastToken.value as String, "right" to expression())
+                "Unary", mutableMapOf("token" to lastToken.value as String, "right" to expression())
             )
             match("EQUAL") -> when (expr.name) {
-                "Variable" -> ParserObject("Assign", mapOf("name" to lastToken.value, "value" to expression()))
+                "Variable" -> ParserObject("Assign", mutableMapOf("name" to lastToken.value, "value" to expression()))
                 "Get" -> ParserObject(
-                    "Set", mapOf("parent" to expr["object"], "prop" to expr["name"], "value" to expression())
+                    "Set", mutableMapOf("parent" to expr["object"], "prop" to expr["name"], "value" to expression())
                 )
                 else -> error("Invalid assignment target")
             }
@@ -66,7 +73,7 @@ class Parser(private val code: MutableList<Token>) {
                         match("LEFT_PAREN") -> finishCall(expr)
                         match("DOT") -> ParserObject(
                             "Get",
-                            mapOf("object" to expr, "name" to consume("IDENTIFIER", "Expect property name after '.'."))
+                            mutableMapOf("object" to expr, "name" to consume("IDENTIFIER", "Expect property name after '.'."))
                         )
                         else -> break@loop
                     }
@@ -86,21 +93,21 @@ class Parser(private val code: MutableList<Token>) {
             } while (match("COMMA"))
         }
         consume("RIGHT_PAREN", "Expected ')' after arguments, got ${peek().value}")
-        return ParserObject("Call", mapOf("callee" to callee, "arguments" to args))
+        return ParserObject("Call", mutableMapOf("callee" to callee, "arguments" to args))
     }
 
     private fun primary(): ParserObject = when {
-        match("IDENTIFIER") -> ParserObject("Variable", mapOf("name" to lastToken.value))
+        match("IDENTIFIER") -> ParserObject("Variable", mutableMapOf("name" to lastToken.value))
         match("FALSE", "TRUE") -> ParserObject(
-            "Literal", mapOf("type" to "Boolean", "value" to (lastToken.type == "TRUE"))
+            "Literal", mutableMapOf("type" to "Boolean", "value" to (lastToken.type == "TRUE"))
         )
         match("GROUPING") -> expression().let {
             consume("RIGHT_PAREN", "Expect ')' after expression.")
-            ParserObject("Grouping", mapOf("expr" to it))
+            ParserObject("Grouping", mutableMapOf("expr" to it))
         }
-        match("NIL") -> ParserObject("Literal", mapOf("type" to "Void", "value" to null))
+        match("NIL") -> ParserObject("Literal", mutableMapOf("type" to "Void", "value" to null))
         match("NUMBER", "STRING") -> ParserObject(
-            "Literal", mapOf("type" to lastToken.type.toCamelCase(), "value" to lastToken.value)
+            "Literal", mutableMapOf("type" to lastToken.type.toCamelCase(), "value" to lastToken.value)
         )
         else -> error("Expect expression. ${peek().value}")
     }
