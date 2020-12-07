@@ -56,11 +56,11 @@ class Parser(private val code: MutableList<Token>) {
           val increment = if(peek().type != "RIGHT_PAREN") expression() else null
           consume("RIGHT_PAREN", "Expect ')' after for loop.")
 
-          var body = if(increment == null) statement() else ParserObject("Block", mutableMapOf("code" to listOf(statement(), increment)))
+          var body = if(increment == null) statement() else ParserObject("Block", mutableMapOf("body" to listOf(statement(), increment)))
 
           body = ParserObject("While", mutableMapOf("condition" to condition, "body" to body))
 
-          if(initializer == null) body else ParserObject("Block", mutableMapOf("code" to listOf(initializer, body)))
+          if(initializer == null) body else ParserObject("Block", mutableMapOf("body" to listOf(initializer, body)))
         }
         else -> expressionStatement()
     }
