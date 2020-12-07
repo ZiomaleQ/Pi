@@ -33,25 +33,19 @@ data class Token(var type: String, var value: String?, val length: Int, val line
     private data class LO(val value: String, val name: String)
 }
 
-data class ParserObject(var name: String, var data: Map<String, Any?>) {
-    operator fun get(key: String): Any? = data[key]
-    fun toPOModif(): POModif = POModif(name, data.toMutableMap())
-    override fun equals(other: Any?): Boolean {
-        if (other !is ParserObject) return false
-        return name == other.name && data.size == other.data.size && data == other.data
-    }
-
-    override fun hashCode(): Int = 31 * name.hashCode() + data.hashCode()
-}
-
-data class POModif(var name: String, var data: MutableMap<String, Any?>) {
+data class ParserObject(var name: String, var data: MutableMap<String, Any?>) {
     operator fun get(key: String): Any? = data[key]
     operator fun set(key: String, value: Any?) {
         data[key] = value
     }
 
     fun delete(key: String) = data.remove(key)
-    fun toPO(): ParserObject = ParserObject(name, data)
+    override fun equals(other: Any?): Boolean {
+        if (other !is ParserObject) return false
+        return name == other.name && data.size == other.data.size && data == other.data
+    }
+
+    override fun hashCode(): Int = 31 * name.hashCode() + data.hashCode()
 }
 
 fun String.toCamelCase(): String = toString().let { "${it[0].toUpperCase()}${it.substring(1).toLowerCase()}" }
