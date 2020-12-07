@@ -1,12 +1,10 @@
 class Optimizer(private var code: MutableList<ParserObject>) {
     private val variables = mutableMapOf<String, ParserObject>()
+    private var optimizedCode = mutableListOf<ParserObject>()
 
-    fun parse(): MutableList<ParserObject> = optimizeParts()
-
-    private fun optimizeParts(): MutableList<ParserObject> {
-      val temp: MutableList<ParserObject> = mutableListOf()
-      for (x in code) temp.add(optimizeNode(x))
-      return temp
+    fun parse(): MutableList<ParserObject> = {
+      for (x in code) optimizedCode.add(optimizeNode(x))
+      optimizedCode
     }
 
     private fun optimizeCall(call: ParserObject): ParserObject {
