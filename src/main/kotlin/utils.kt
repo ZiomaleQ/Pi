@@ -49,3 +49,6 @@ data class ParserObject(var name: String, var data: MutableMap<String, Any?>) {
 }
 
 fun String.toCamelCase(): String = toString().let { "${it[0].toUpperCase()}${it.substring(1).toLowerCase()}" }
+
+class Return(val value: Any?) : RuntimeException(null, null, false, false)
+class RuntimeError(message: String?) : RuntimeException(message)
