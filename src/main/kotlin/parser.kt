@@ -127,7 +127,7 @@ class Parser(private val code: MutableList<Token>) {
             } while (match("COMMA"))
         }
         consume("RIGHT_PAREN", "Expected ')' after arguments, got ${peek().value}")
-        return ParserObject("Call", mutableMapOf("callee" to callee, "arguments" to args))
+        return ParserObject("Call", mutableMapOf("callee" to callee["name"] as String, "arguments" to args))
     }
 
     private fun primary(): ParserObject = when {
