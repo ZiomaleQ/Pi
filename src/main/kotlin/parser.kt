@@ -16,18 +16,18 @@ class Parser(private val code: MutableList<Token>) {
     private fun declaration(): ParserObject = when {
         match("LET") -> {
           val name = consume("IDENTIFIER", "Expected name after let keyword got '${peek().value}' (${peek().type})")
-          val init = if (match("EQUAL")) expression() else null
-          consume("SEMICOLON", "Expect ';' after variable declaration.")
+          val init = if (match("EQUAL")){ if(peek().type == "FUN" ) declaration() else expression()} else null
+          if(init != null && init.name != "Function")consume("SEMICOLON", "Expect ';' after variable declaration.")
           ParserObject("Let", mutableMapOf("name" to name.value, "initializer" to init))
         }
         match("FUN") -> {
-          val name = consume("IDENTIFIER", "Expected name after fun keyword got '${peek().value}' (${peek().type})")
-          consume("LEFT_PAREN", "Expected '(' after name, got ${peek().value}")
+          val name = if(peek().type == "IDENTIFIER") advance() else {advance(); Token("IDENTIFIER", "\$Anonymous\$", "\$Anonymous\$".length, peek().line)}
+          consume("LEFT_PAREN", "Expected '(' after function declaration, got ${peek().value}")
 
           val args = mutableListOf<String>()
 
           if (peek().type != "RIGHT_PAREN") {
-              do { args.add(consume("IDENTIFIER", "Only identifiers in function args got '${peek().value}'")?.value ?: "") } while (match("COMMA"))
+              do { args.add(consume("IDENTIFIER", "Only identifiers in function args got '${peek().value}'").value ?: "") } while (match("COMMA"))
           }
           consume("RIGHT_PAREN", "Expected ')' after arguments, got ${peek().value}")
           consume("LEFT_BRACE", "Expect '{' before function body, got ${peek().value}")
