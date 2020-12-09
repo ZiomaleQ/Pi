@@ -69,9 +69,7 @@ class Parser(private val code: MutableList<Token>) {
 
           var body = if(increment == null) statement() else ParserObject("Block", mutableMapOf("body" to listOf(statement(), increment)))
 
-          body = ParserObject("While", mutableMapOf("condition" to condition, "body" to body))
-
-          if(initializer == null) body else ParserObject("Block", mutableMapOf("body" to listOf(initializer, body)))
+          ParserObject("While", mutableMapOf("initializer" to initializer, "condition" to condition, "body" to body))
         }
         match("LEFT_BRACE") -> block()
         match("RETURN") -> {
