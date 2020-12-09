@@ -50,7 +50,7 @@ class Parser(private val code: MutableList<Token>) {
           val condition = expression()
           consume("RIGHT_PAREN", "Expect ')' after while condition.")
           val body = statement()
-          ParserObject("While", mutableMapOf("condition" to condition, "body" to body))
+          ParserObject("While", mutableMapOf("initializer" to null, "condition" to condition, "body" to body))
         }
         match("FOR") -> {
           consume("LEFT_PAREN", "Expect '(' after 'for'.")
