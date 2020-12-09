@@ -104,20 +104,13 @@ class Parser(private val code: MutableList<Token>) {
                 "Unary", mutableMapOf("token" to lastToken.value as String, "right" to expression())
             )
             match("EQUAL") -> when (expr.name) {
-                "Variable" -> ParserObject("Assign", mutableMapOf("name" to expr["name"], "value" to expression()))
-                "Get" -> ParserObject(
-                    "Set", mutableMapOf("parent" to expr["object"], "prop" to expr["name"], "value" to expression())
-                )
+                "Variable" -> ParserObject("Assign", mutableMapOf("name" to expr["name"] as String, "value" to expression()))
                 else -> error("Invalid assignment target")
             }
             else -> {
                 loop@ while (true) {
                     expr = when {
                         match("LEFT_PAREN") -> finishCall(expr)
-                        match("DOT") -> ParserObject(
-                            "Get",
-                            mutableMapOf("object" to expr, "name" to consume("IDENTIFIER", "Expect property name after '.'."))
-                        )
                         else -> break@loop
                     }
                 }
