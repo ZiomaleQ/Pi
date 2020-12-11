@@ -5,9 +5,7 @@ fun main( /* args: Array<String> */) {
 
 fun parseCode(code: String, debug: Boolean = false): MutableList<ParserObject> {
   var tokens = scanTokens(code)
-  val temp = Parser(tokens).parse()
-  if(debug) {for (x in temp) println(x)}
-  return Optimizer(temp).parse()
+  return Parser(tokens).parse().let { if(debug) { for (x in it) println(x); it} else it}
 }
 
 fun runExamples() {
