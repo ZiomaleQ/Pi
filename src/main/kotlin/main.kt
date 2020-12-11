@@ -3,9 +3,12 @@ fun main( /* args: Array<String> */) {
   /* parseExamples() */
 }
 
-fun parseCode(code: String, debug: Boolean = false): MutableList<ParserObject> {
+fun parseCode(code: String, debug: Boolean = false): MutableList<Node> {
   var tokens = scanTokens(code)
-  return Parser(tokens).parse().let { if(debug) { for (x in it) println(x); it} else it}
+  if(debug) { for (x in tokens) println(x); }
+  var parsed = Parser(tokens).parse()
+  if(debug) { for (x in parsed) println(x); }
+  return parsed
 }
 
 fun runExamples() {
@@ -32,6 +35,11 @@ fun runExamples() {
   println("\nFunction example:")
   println("Code: " + "'fun x(y) {return y + 1;} print(x(0));'")
   Interpreter().run(parseCode("fun x(y) {return y + 1;} print(x(0));"))
+
+  println("\nVarrarg print")
+  println("Code: " + """print("I like ding dongs", 1234, "You're mean");""")
+  var x = parseCode("""print("I like ding dongs", 1234, "You're mean");""")
+  Interpreter().run(x)
 }
 
 fun parseExamples() {
