@@ -24,7 +24,6 @@ class Interpreter {
       "Let" -> runLet(node)
       "Function" -> runFunction(node)
       "If" -> runIf(node)
-      "While" -> runWhile(node)
       "Return" -> throw runReturn(node)
       "Block" -> runBlock(node)
       "Binary" -> runBinary(node)
@@ -32,7 +31,7 @@ class Interpreter {
       "Assign" -> runAssign(node)
       "Variable" -> environment[node["name"] as String]
       "Literal" -> VariableValue(node["type"] as String, node["value"])
-      else -> {println("Unexpected node type '${node.name}'"); null}
+      else -> { throw Error("Unexpected node type '${node.name}'"); null }
     }
 
     private fun runReturn(node: ParserObject): Return {
@@ -67,15 +66,6 @@ class Interpreter {
       toBoolean(node["condition"] as ParserObject) -> runEnclosed(node["thenBranch"] as ParserObject)
       node["elseBranch"] != null -> runEnclosed(node["elseBranch"] as ParserObject)
       else -> null
-    }
-
-    private fun runWhile(node: ParserObject) {
-      if(node["initializer"] != null) {
-        this.environment = environment.enclose()
-        runNode(node["initializer"] as ParserObject)
-      }
-      while(toBoolean(node["condition"] as ParserObject)) { runEnclosed(node["body"] as ParserObject) }
-      if(node["initializer"] != null) this.environment = environment.enclosing!!
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -213,7 +203,6 @@ class Environment(var enclosing: Environment? = null) {
     fun assignAt(distance: Int, name: String, value: VariableValue) {
         ancestor(distance)!!.values[name] = value
     }
- }
 
 data class VariableValue(var type: String, var value: Any?)
 data class FunctionValue(var declaration: FunctionDeclaration, var closure: Environment? = null): PartSCallable {

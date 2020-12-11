@@ -45,31 +45,6 @@ class Parser(private val code: MutableList<Token>) {
             val elseBranch = if (match("ELSE")) statement() else null
             ParserObject("If", mutableMapOf("condition" to condition, "thenBranch" to thenBranch, "elseBranch" to elseBranch))
         }
-        match("WHILE") -> {
-          consume("LEFT_PAREN", "Expect '(' after 'while'.")
-          val condition = expression()
-          consume("RIGHT_PAREN", "Expect ')' after while condition.")
-          val body = statement()
-          ParserObject("While", mutableMapOf("initializer" to null, "condition" to condition, "body" to body))
-        }
-        match("FOR") -> {
-          consume("LEFT_PAREN", "Expect '(' after 'for'.")
-          var initializer = when(peek().type) {
-            "SEMICOLON" -> null
-            "LET" -> {declaration()}
-            else -> expressionStatement()
-          }
-
-          val condition = if(peek().type != "SEMICOLON") expression()
-            else ParserObject("Literal", mutableMapOf("type" to "Boolean", "value" to true))
-          consume("SEMICOLON", "Expect ';' after loop condition.")
-
-          val increment = if(peek().type != "RIGHT_PAREN") expression() else null
-          consume("RIGHT_PAREN", "Expect ')' after for loop.")
-
-          var body = if(increment == null) statement() else ParserObject("Block", mutableMapOf("body" to listOf(statement(), increment)))
-
-          ParserObject("While", mutableMapOf("initializer" to initializer, "condition" to condition, "body" to body))
         }
         match("LEFT_BRACE") -> block()
         match("RETURN") -> {

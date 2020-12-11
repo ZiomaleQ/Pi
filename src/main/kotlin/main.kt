@@ -25,14 +25,6 @@ fun runExamples() {
   println("Code: " + "'print(true < false);'")
   Interpreter().run(parseCode("print(true < false);"))
 
-  println("\nWhile example:")
-  println("Code: " + """'let x = 5; while(x >= 1) { print(x); x = x - 1;}'""")
-  Interpreter().run(parseCode("let x = 5; while(x >= 1) { print(x); x = x - 1;}"))
-
-  println("\nFor example:")
-  println("Code: " + """'for(let x = 0; x < 5; x = x + 1) print(x);'""")
-  Interpreter().run(parseCode("for(let x = 0; x < 5; x = x + 1) print(x);"))
-
   println("\nPrint with let example:")
   println("Code: " + "'let x = 0; print(x);'")
   Interpreter().run(parseCode("let x = 0; print(x);"))
@@ -61,16 +53,6 @@ fun parseExamples() {
   println("\nIdk example:")
   println("Code: " + "'print(true < false);'")
   temp = parseCode("print(true < false);")
-  for (x in temp) println(x)
-
-  println("\nWhile example:")
-  println("Code: " + """'while(true) print(x);'""")
-  temp = parseCode("""let x = 1; while(x >= 1) { print(x); x = x - 1}""")
-  for (x in temp) println(x)
-
-  println("\nFor example:")
-  println("Code: " + """'for(let x = 0; x < 0; x = x + 1) print(x);'""")
-  temp = parseCode("""for(let x = 0; x < 0; x = x + 1) print(x);""")
   for (x in temp) println(x)
 
   println("\nPrint with let example:")
