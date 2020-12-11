@@ -4,7 +4,7 @@ fun scanTokens(code: String): MutableList<Token> {
 
 class Tokenizer(private val code: String) {
     private var rules: MutableList<Rule> = mutableListOf(
-        Rule(true, "OPERATOR", "+-/*;[](){}.!"),
+        Rule(true, "OPERATOR", "+-/*;[](){}.!,"),
         Rule(false, "NUMBER", "[0-9]|[\\.]"),
         Rule(false, "LOGIC", "[\\||\\&|\\=|\\>|\\<|\\!]"),
         Rule(false, "ORDER", "[A-Z]+"),
@@ -21,6 +21,7 @@ class Tokenizer(private val code: String) {
             var found = false
             var expr: String
             if (peek() == '"') {
+                current++
                 expr = "${peekNext()}"
                 while (current < code.size && peek() != '"') expr = "$expr${peekNext()}";
                 if (peekNext() != '"') throw Error("[$line]Unterminated string")
@@ -44,7 +45,7 @@ class Tokenizer(private val code: String) {
             }
             if (!found) current++
         }
-        tokens.add(Token("EOF", null, 0, line)).also { tokens.map { it.parse() } }
+        tokens.add(Token("EOF", "", 0, line)).also { tokens.map { it.parse() } }
         tokens = tokens.filter { it.type != "NEW-LINE" && it.type != "EOF" }.toMutableList()
         return tokens
     }
