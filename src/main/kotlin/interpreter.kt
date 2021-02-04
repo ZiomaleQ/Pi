@@ -4,16 +4,16 @@ class Interpreter {
     private val globals = Environment()
     private var environment = globals
     private var code = mutableListOf<Node>();
-
+    
     init {
-    globals.define("print", VariableValue("Function", (object : PartSCallable {
-            override fun call(interpreter: Interpreter, arguments: List<VariableValue>): VariableValue {
-              println(arguments.map({it.value}).joinToString());
-              return VariableValue("Void", null)
-            }
-            override fun toString(): String = "<native fn>"
-        })))
-}
+      globals.define("print", VariableValue("Function", (object : PartSCallable {
+          override fun call(interpreter: Interpreter, arguments: List<VariableValue>): VariableValue {
+            println(arguments.map({it.value}).joinToString());
+            return VariableValue("Void", null)
+          }
+          override fun toString(): String = "<native fn>"
+      })));
+    }
 
     fun run(code: List<Node>) {
       this.code.addAll(code)
@@ -43,7 +43,7 @@ class Interpreter {
     private fun runReturn(node: ReturnNode): Return = Return(runNode(node.expr))
 
     private fun runLet(node: LetNode): VariableValue {
-      var value = VariableValue("Void", null)
+      var value = VariableValue("void", null)
       if(node.value == null) environment.define(node.name, value)
       else {
         var tempNode = node.value as Node;
@@ -237,4 +237,4 @@ data class FunctionDeclaration(var name: String, var parameters: List<String>, v
 
 interface PartSCallable {
      fun call(interpreter: Interpreter, arguments: List<VariableValue>): VariableValue
- }
+}

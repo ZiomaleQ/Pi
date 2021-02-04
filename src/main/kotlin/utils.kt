@@ -17,12 +17,12 @@ data class Token(var type: String, var value: String, val length: Int, val line:
             LO("||", "OR"), LO("&&", "AND")
         ).groupBy { it.value.length }
         when (type) {
-            "NUMBER" -> value = (value as String).toDouble().toString()
-            "ORDER" -> type = keywords.find { (value as String).toLowerCase() == it }?.toUpperCase()
-                ?: "".let { if (it.isEmpty()) "IDENTIFIER" else it.toUpperCase() }
-            "OPERATOR" -> type = operators[value?.get(0)] ?: "ERROR-XD"
+            "NUMBER" -> value = value.toDouble().toString()
+            "ORDER" -> type = keywords.find { value.toLowerCase() == it }?.toUpperCase()
+                ?: "".let { if (it == "") "IDENTIFIER" else it.toUpperCase() }
+            "OPERATOR" -> type = operators[value.get(0)] ?: "ERROR-XD"
             "LOGIC" -> {
-                type = logic[(value as String).length]?.find { value as String == it.value }?.name
+                type = logic[value.length]?.find { value == it.value }?.name
                     ?: "ERROR-WRONG-LOGIC"
             }
         }

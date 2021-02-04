@@ -28,7 +28,7 @@ class Parser(private val code: MutableList<Token>) {
 
           if (peek().type != "RIGHT_PAREN") {
               do {
-                params.add(consume("IDENTIFIER", "Only identifiers in function args got '${peek().value}'")!!.value)
+                params.add(consume("IDENTIFIER", "Only identifiers in function args got '${peek().value}'").value)
               } while (match("COMMA"))
           }
           consume("RIGHT_PAREN", "Expected ')' after arguments, got ${peek().value}")
