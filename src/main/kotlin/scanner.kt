@@ -15,7 +15,7 @@ class Tokenizer(private val code: String) {
 
     fun tokenizeCode(): MutableList<Token> {
         val code = this.code.toCharArray()
-        var tokens = mutableListOf<Token>()
+        val tokens = mutableListOf<Token>()
         val rulesLocal = rules.groupBy { it.isSingle }
         while (current < code.size) {
             var found = false
@@ -23,8 +23,8 @@ class Tokenizer(private val code: String) {
             if (peek() == '"') {
                 current++
                 expr = "${peekNext()}"
-                while (current < code.size && peek() != '"') expr = "$expr${peekNext()}";
-                if (peekNext() != '"') throw Error("[$line]Unterminated string")
+                while (current < code.size && peek() != '"') expr += peekNext()
+                if (peekNext() != '"') throw Error("[$line] Unterminated string")
                 found = tokens.add(Token("STRING", expr, expr.length, line))
             }
             for (rule in rulesLocal[true] ?: listOf()) {
@@ -45,9 +45,7 @@ class Tokenizer(private val code: String) {
             }
             if (!found) current++
         }
-        tokens.add(Token("EOF", "", 0, line)).also { tokens.map { it.parse() } }
-        tokens = tokens.filter { it.type != "NEW-LINE" && it.type != "EOF" }.toMutableList()
-        return tokens
+        return tokens.filter { it.type != "NEW-LINE" }.map { it.parse() }.toMutableList()
     }
 
     private fun peek(): Char = code[current]

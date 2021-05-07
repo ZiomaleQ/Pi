@@ -18,9 +18,9 @@ data class Token(var type: String, var value: String, val length: Int, val line:
         ).groupBy { it.value.length }
         when (type) {
             "NUMBER" -> value = value.toDouble().toString()
-            "ORDER" -> type = keywords.find { value.toLowerCase() == it }?.toUpperCase()
-                ?: "".let { if (it == "") "IDENTIFIER" else it.toUpperCase() }
-            "OPERATOR" -> type = operators[value.get(0)] ?: "ERROR-XD"
+            "ORDER" -> type = keywords.find { value.lowercase() == it }?.uppercase()
+                ?: "".let { if (it == "") "IDENTIFIER" else it.uppercase() }
+            "OPERATOR" -> type = operators[value[0]] ?: "ERROR-XD"
             "LOGIC" -> {
                 type = logic[value.length]?.find { value == it.value }?.name
                     ?: "ERROR-WRONG-LOGIC"
@@ -33,22 +33,7 @@ data class Token(var type: String, var value: String, val length: Int, val line:
     private data class LO(val value: String, val name: String)
 }
 
-data class ParserObject(var name: String, var data: MutableMap<String, Any?>) {
-    operator fun get(key: String): Any? = data[key]
-    operator fun set(key: String, value: Any?) {
-        data[key] = value
-    }
-
-    fun delete(key: String) = data.remove(key)
-    override fun equals(other: Any?): Boolean {
-        if (other !is ParserObject) return false
-        return name == other.name && data.size == other.data.size && data == other.data
-    }
-
-    override fun hashCode(): Int = 31 * name.hashCode() + data.hashCode()
-}
-
-fun String.toCamelCase(): String = toString().let { "${it[0].toUpperCase()}${it.substring(1).toLowerCase()}" }
+fun String.toCamelCase(): String = toString().let { "${it[0].uppercase()}${it.substring(1).lowercase()}" }
 
 class Return(val value: Any?) : RuntimeException(null, null, false, false)
 class RuntimeError(message: String?) : RuntimeException(message)

@@ -15,25 +15,29 @@ class Parser(private val code: MutableList<Token>) {
 
     private fun declaration(): Node = when {
         match("LET") -> {
-          val name = consume("IDENTIFIER", "Expected name after let keyword got '${peek().value}' (${peek().type})")
-          val init = if (match("EQUAL")){ if(peek().type == "FUN" ) declaration() else expression()} else null
-          if(init != null && init !is FunctionNode)consume("SEMICOLON", "Expect ';' after variable declaration.")
-          LetNode(name = name.value, value = init)
+            val name = consume("IDENTIFIER", "Expected name after let keyword got '${peek().value}' (${peek().type})")
+            val init = if (match("EQUAL")) {
+                if (peek().type == "FUN") declaration() else expression()
+            } else null
+            if (init != null && init !is FunctionNode) consume("SEMICOLON", "Expected ';' after variable declaration.")
+            LetNode(name = name.value, value = init)
         }
         match("FUN") -> {
-          val name = if(peek().type == "IDENTIFIER") advance() else {advance(); Token("IDENTIFIER", "\$Anonymous\$", "\$Anonymous\$".length, peek().line)}
-          consume("LEFT_PAREN", "Expected '(' after function declaration, got ${peek().value}")
+            val name = if (peek().type == "IDENTIFIER") advance() else {
+                advance(); Token("IDENTIFIER", "\$Anonymous\$", "\$Anonymous\$".length, peek().line)
+            }
+            consume("LEFT_PAREN", "Expected '(' after function declaration, got ${peek().value}")
 
-          val params = mutableListOf<String>()
+            val params = mutableListOf<String>()
 
-          if (peek().type != "RIGHT_PAREN") {
-              do {
-                params.add(consume("IDENTIFIER", "Only identifiers in function args got '${peek().value}'").value)
-              } while (match("COMMA"))
-          }
-          consume("RIGHT_PAREN", "Expected ')' after arguments, got ${peek().value}")
-          consume("LEFT_BRACE", "Expect '{' before function body, got ${peek().value}")
-          FunctionNode(name = name.value, parameters = params, body = block())
+            if (peek().type != "RIGHT_PAREN") {
+                do {
+                    params.add(consume("IDENTIFIER", "Only identifiers in function args got '${peek().value}'").value)
+                } while (match("COMMA"))
+            }
+            consume("RIGHT_PAREN", "Expected ')' after arguments, got ${peek().value}")
+            consume("LEFT_BRACE", "Expect '{' before function body, got ${peek().value}")
+            FunctionNode(name = name.value, parameters = params, body = block())
         }
         else -> statement()
     }
@@ -43,7 +47,11 @@ class Parser(private val code: MutableList<Token>) {
             consume("LEFT_PAREN", "Expect '(' after 'if'.")
             val condition = expression()
             consume("RIGHT_PAREN", "Expect ')' after if condition.")
-            IfNode(condition = condition, thenBranch = statement(), elseBranch = if (match("ELSE")) statement() else null)
+            IfNode(
+                condition = condition,
+                thenBranch = statement(),
+                elseBranch = if (match("ELSE")) statement() else null
+            )
         }
         match("LEFT_BRACE") -> block()
         match("RETURN") -> ReturnNode(expressionStatement())
@@ -51,13 +59,14 @@ class Parser(private val code: MutableList<Token>) {
     }
 
     private fun block(): BlockNode {
-      val statements: MutableList<Node> = ArrayList()
-      while (peek().type != "RIGHT_BRACE" && peek().type != "EOF") statements.add(declaration())
-      consume("RIGHT_BRACE", "Expect '}' after block, got ${peek().value}")
-      return BlockNode(body = statements)
+        val statements: MutableList<Node> = ArrayList()
+        while (peek().type != "RIGHT_BRACE" && peek().type != "EOF") statements.add(declaration())
+        consume("RIGHT_BRACE", "Expect '}' after block, got ${peek().value}")
+        return BlockNode(body = statements)
     }
 
-    private fun expressionStatement(): Node = expression().let { consume("SEMICOLON", "Expected semicolon after expression, got '${peek().value}'"); it }
+    private fun expressionStatement(): Node =
+        expression().let { consume("SEMICOLON", "Expected semicolon after expression, got '${peek().value}'"); it }
 
     private fun expression(): Node {
         var expr = primary()
