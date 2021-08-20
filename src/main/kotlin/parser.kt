@@ -22,6 +22,14 @@ class Parser(private val code: MutableList<Token>) {
             if (init != null && init !is FunctionNode) consume("SEMICOLON", "Expected ';' after variable declaration.")
             LetNode(name = name.value, value = init)
         }
+        match("CONST") -> {
+            val name = consume("IDENTIFIER", "Expected name after let keyword got '${peek().value}' (${peek().type})")
+            val init = if (match("EQUAL")) {
+                if (peek().type == "FUN") declaration() else expression()
+            } else null
+            if (init != null && init !is FunctionNode) consume("SEMICOLON", "Expected ';' after variable declaration.")
+            ConstNode(name.value, init)
+        }
         match("FUN") -> {
             val name = if (peek().type == "IDENTIFIER") advance() else {
                 advance(); Token("IDENTIFIER", "\$Anonymous\$", "\$Anonymous\$".length, peek().line)

@@ -9,7 +9,7 @@ class Interpreter {
         globals.define("print", VariableValue("Function", (object : PartSCallable {
             override fun call(interpreter: Interpreter, arguments: List<VariableValue?>): VariableValue {
                 println(arguments.map { it?.value }.joinToString())
-                return VariableValue("Void", null)
+                return VariableValue.void
             }
 
             override fun toString(): String = "<native fn>"
@@ -25,6 +25,7 @@ class Interpreter {
 
     fun runNode(node: Node) = when (node) {
         is LetNode -> runLet(node)
+        is ConstNode -> runConst(node)
         is FunctionNode -> runFunction(node)
         is IfNode -> runIf(node)
         is ReturnNode -> throw runReturn(node)
@@ -46,7 +47,7 @@ class Interpreter {
     private fun runReturn(node: ReturnNode): Return = Return(runNode(node.expr))
 
     private fun runLet(node: LetNode): VariableValue {
-        var value = VariableValue("void", null)
+        var value = VariableValue.void
         if (node.value == null) environment.define(node.name, value)
         else {
             val tempNode = node.value as Node
@@ -60,7 +61,21 @@ class Interpreter {
         return value
     }
 
-    @Suppress("UNCHECKED_CAST")
+    private fun runConst(node: ConstNode): ConstValue {
+        var value = ConstValue("Void", null)
+        if (node.value == null) environment.define(node.name, value)
+        else {
+            val tempNode = node.value as Node
+            value = when (tempNode) {
+                is LiteralNode -> ConstValue(tempNode.type, tempNode.value)
+                is FunctionNode -> ConstValue("Function", runFunction(tempNode, declare = false))
+                else -> value
+            }
+            environment.define(node.name, value)
+        }
+        return value
+    }
+
     private fun runFunction(node: FunctionNode, declare: Boolean = true): VariableValue = FunctionValue(
         FunctionDeclaration(node.name, node.parameters, node.body)
     ).let {
@@ -74,7 +89,6 @@ class Interpreter {
         else -> null
     }
 
-    @Suppress("UNCHECKED_CAST")
     fun runBlock(node: BlockNode, map: MutableMap<String, VariableValue>? = null): Any {
         environment = environment.enclose()
         if (map != null) for (x in map.keys) environment.define(x, map[x]!!)
@@ -142,7 +156,7 @@ class Interpreter {
     }
 
     private fun runAssign(node: AssignNode): VariableValue {
-        var value = VariableValue("Void", null)
+        var value = VariableValue.void
 
         if (node.value == null) return value
         value = when (node.value) {
@@ -214,7 +228,10 @@ class Environment(var enclosing: Environment? = null) {
 
 
     fun assign(name: String, value: VariableValue): Unit = when {
-        values.containsKey(name) -> values[name] = value
+        values.containsKey(name) -> {
+            if (values[name] is ConstValue) throw RuntimeError("Can't override const value of '$name'")
+            else values[name] = value
+        }
         enclosing != null -> enclosing!!.assign(name, value)
         else -> throw RuntimeError("Undefined '$name' reference")
     }
@@ -223,6 +240,7 @@ class Environment(var enclosing: Environment? = null) {
 interface Node
 
 class LetNode(var name: String, var value: Node?) : Node
+class ConstNode(var name: String, var value: Node?) : Node
 class AssignNode(var name: String, var value: Node?) : Node
 class FunctionNode(var name: String, var parameters: List<FunctionParameter>, var body: BlockNode) : Node
 class IfNode(var condition: Node, var thenBranch: Node, var elseBranch: Node?) : Node
@@ -235,8 +253,15 @@ class VariableNode(var name: String) : Node
 class UnaryNode(var op: String, var expr: Node) : Node
 class LiteralNode(var type: String, var value: Any?) : Node
 
-data class VariableValue(var type: String, var value: Any?)
-data class FunctionValue(var declaration: FunctionDeclaration, var closure: Environment? = null) : PartSCallable {
+open class VariableValue(var type: String, var value: Any?) {
+    companion object {
+        var void = VariableValue("Void", null)
+    }
+}
+
+class ConstValue(type: String, value: Any?) : VariableValue(type, value)
+
+class FunctionValue(var declaration: FunctionDeclaration, var closure: Environment? = null) : PartSCallable {
     override fun toString() = "${declaration.name} function"
     override fun call(interpreter: Interpreter, arguments: List<VariableValue?>): VariableValue {
         val map = mutableMapOf<String, VariableValue>()
@@ -244,8 +269,8 @@ data class FunctionValue(var declaration: FunctionDeclaration, var closure: Envi
             val variableValue = arguments.getOrNull(i) ?: if (declaration.parameters[i] is DefaultParameter)
                 interpreter.runNode((declaration.parameters[i] as DefaultParameter).value) as? VariableValue
             else
-                VariableValue("void", null)
-            map[declaration.parameters[i].name] = variableValue ?: VariableValue("void", null)
+                VariableValue.void
+            map[declaration.parameters[i].name] = variableValue ?: VariableValue.void
         }
         var returnValue = VariableValue("Void", null)
         try {

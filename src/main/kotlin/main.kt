@@ -17,6 +17,15 @@ fun runExamples() {
     println("Code: 'let x = 0;'")
     Interpreter().run(parseCode("let x = 0;"))
 
+    try {
+        println("\nConst example")
+        println("Code: 'const x = 0; x = 1;'")
+        Interpreter().run(parseCode("const x = 0; x = 1;"))
+    } catch (err: Exception) {
+        if (err is RuntimeError) println("There was error, but it was expected: ${err.message}")
+        else throw  err
+    }
+
     println("\nReassign example")
     println("Code: 'let x = 0; x = x + 1; print(x)'")
     Interpreter().run(parseCode("let x = 0; x = x + 1; print(x);"))
@@ -44,36 +53,4 @@ fun runExamples() {
     println("\nDefault parameters")
     println("Code: " + """fun x(y = 0) {print(y);} x(); x(1);""")
     Interpreter().run(parseCode("""fun x(y = 0) {print(y);} x(); x(1);"""))
-}
-
-fun parseExamples() {
-    println("\nLet example:")
-    println("Code: " + "'let x = 0;'")
-    var temp = parseCode("let x = 0;")
-    for (x in temp) println(x)
-
-    println("\nReassign example:")
-    println("Code: " + "'let x = 1; x = x + 1; print(x);'")
-    temp = parseCode("let x = 1; x = x + 1; print(x);")
-    for (x in temp) println(x)
-
-    println("\nIf else example:")
-    println("Code: " + "'if(true) print(0 + 1 + 2); else doSth();'")
-    temp = parseCode("if(true) print(0 + 1 + 2); else doSth();")
-    for (x in temp) println(x)
-
-    println("\nIdk example:")
-    println("Code: " + "'print(true < false);'")
-    temp = parseCode("print(true < false);")
-    for (x in temp) println(x)
-
-    println("\nPrint with let example:")
-    println("Code: " + "'let x = 0; print(x);'")
-    temp = parseCode("let x = 0; print(x);")
-    for (x in temp) println(x)
-
-    println("\nFunction example:")
-    println("Code: " + "'fun x(y) {return y + 1;}'")
-    temp = parseCode("fun x(y) {return y + 1;}")
-    for (x in temp) println(x)
 }
