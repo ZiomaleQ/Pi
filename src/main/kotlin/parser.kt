@@ -28,11 +28,20 @@ class Parser(private val code: MutableList<Token>) {
             }
             consume("LEFT_PAREN", "Expected '(' after function declaration, got ${peek().value}")
 
-            val params = mutableListOf<String>()
+            val params = mutableListOf<FunctionParameter>()
+            var defOnly = false
 
             if (peek().type != "RIGHT_PAREN") {
                 do {
-                    params.add(consume("IDENTIFIER", "Only identifiers in function args got '${peek().value}'").value)
+                    val argName =
+                        consume("IDENTIFIER", "Expected identifier in function parameters, got ${peek().value}").value
+                    if (match("EQUAL")) {
+                        params.add(DefaultParameter(argName, expression()))
+                        defOnly = true
+                    } else {
+                        if (defOnly) error("Only default parameters after first default parameter")
+                        params.add(FunctionParameter(argName))
+                    }
                 } while (match("COMMA"))
             }
             consume("RIGHT_PAREN", "Expected ')' after arguments, got ${peek().value}")

@@ -1,4 +1,4 @@
-import java.lang.System.currentTimeMillis
+import java.lang.System.*
 
 class Interpreter {
     private val globals = Environment()
@@ -7,8 +7,8 @@ class Interpreter {
 
     init {
         globals.define("print", VariableValue("Function", (object : PartSCallable {
-            override fun call(interpreter: Interpreter, arguments: List<VariableValue>): VariableValue {
-                println(arguments.map { it.value }.joinToString())
+            override fun call(interpreter: Interpreter, arguments: List<VariableValue?>): VariableValue {
+                println(arguments.map { it?.value }.joinToString())
                 return VariableValue("Void", null)
             }
 
@@ -23,7 +23,7 @@ class Interpreter {
         println("Successfully run code in ${(currentTimeMillis().toDouble() - time) / 1000.0}s")
     }
 
-    private fun runNode(node: Node) = when (node) {
+    fun runNode(node: Node) = when (node) {
         is LetNode -> runLet(node)
         is FunctionNode -> runFunction(node)
         is IfNode -> runIf(node)
@@ -136,7 +136,7 @@ class Interpreter {
         return when {
             ref is VariableValue && ref.type == "Function" -> (ref.value as PartSCallable).call(
                 this,
-                node.args.map { runNode(it) as VariableValue })
+                node.args.map { runNode(it) as? VariableValue })
             else -> throw RuntimeError("Variable '${node.name}' is not a function")
         }
     }
@@ -224,7 +224,7 @@ interface Node
 
 class LetNode(var name: String, var value: Node?) : Node
 class AssignNode(var name: String, var value: Node?) : Node
-class FunctionNode(var name: String, var parameters: List<String>, var body: BlockNode) : Node
+class FunctionNode(var name: String, var parameters: List<FunctionParameter>, var body: BlockNode) : Node
 class IfNode(var condition: Node, var thenBranch: Node, var elseBranch: Node?) : Node
 class BinaryNode(var op: String, var left: Node, var right: Node) : Node
 class CallNode(var name: String, var args: List<Node>) : Node
@@ -238,9 +238,15 @@ class LiteralNode(var type: String, var value: Any?) : Node
 data class VariableValue(var type: String, var value: Any?)
 data class FunctionValue(var declaration: FunctionDeclaration, var closure: Environment? = null) : PartSCallable {
     override fun toString() = "${declaration.name} function"
-    override fun call(interpreter: Interpreter, arguments: List<VariableValue>): VariableValue {
+    override fun call(interpreter: Interpreter, arguments: List<VariableValue?>): VariableValue {
         val map = mutableMapOf<String, VariableValue>()
-        for (i in declaration.parameters.indices) map[declaration.parameters[i]] = arguments[i]
+        for (i in declaration.parameters.indices) {
+            val variableValue = arguments.getOrNull(i) ?: if (declaration.parameters[i] is DefaultParameter)
+                interpreter.runNode((declaration.parameters[i] as DefaultParameter).value) as? VariableValue
+            else
+                VariableValue("void", null)
+            map[declaration.parameters[i].name] = variableValue ?: VariableValue("void", null)
+        }
         var returnValue = VariableValue("Void", null)
         try {
             interpreter.runBlock(declaration.body, map)
@@ -251,8 +257,11 @@ data class FunctionValue(var declaration: FunctionDeclaration, var closure: Envi
     }
 }
 
-data class FunctionDeclaration(var name: String, var parameters: List<String>, var body: BlockNode)
+data class FunctionDeclaration(var name: String, var parameters: List<FunctionParameter>, var body: BlockNode)
+
+open class FunctionParameter(val name: String)
+class DefaultParameter(name: String, val value: Node) : FunctionParameter(name)
 
 interface PartSCallable {
-    fun call(interpreter: Interpreter, arguments: List<VariableValue>): VariableValue
+    fun call(interpreter: Interpreter, arguments: List<VariableValue?>): VariableValue
 }

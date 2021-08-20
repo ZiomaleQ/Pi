@@ -1,3 +1,3 @@
 
-rootProject.name = "parts_solo"
+rootProject.name = "parts"
 

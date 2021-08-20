@@ -5,9 +5,13 @@ data class Token(var type: String, var value: String, val length: Int, val line:
         if (parsed) return this
         val keywords = listOf("and", "else", "false", "if", "let", "nil", "true", "fun", "return")
         val operators = mapOf(
-            '+' to "PLUS", '-' to "MINUS", '/' to "SLASH", '*' to "STAR",
-            ';' to "SEMICOLON", '.' to "DOT", ',' to "COMMA", ':' to "COLON",
-            '(' to "LEFT_PAREN", ')' to "RIGHT_PAREN", '{' to "LEFT_BRACE", '}' to "RIGHT_BRACE"
+            '+' to "PLUS", '-' to "MINUS",
+            '/' to "SLASH", '*' to "STAR",
+            ';' to "SEMICOLON", ':' to "COLON",
+            '.' to "DOT", ',' to "COMMA",
+            '(' to "LEFT_PAREN", ')' to "RIGHT_PAREN",
+            '{' to "LEFT_BRACE", '}' to "RIGHT_BRACE",
+            '[' to "LEFT_BRACKET", ']' to "RIGHT_BRACKET"
         )
         val logic = listOf(
             LO("=", "EQUAL"), LO("==", "EQUAL_EQUAL"),

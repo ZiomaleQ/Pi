@@ -37,10 +37,13 @@ fun runExamples() {
     println("Code: " + "'fun x(y) {return y + 1;} print(x(0));'")
     Interpreter().run(parseCode("fun x(y) {return y + 1;} print(x(0));"))
 
-    println("\nVarrarg print")
+    println("\nVararg print")
     println("Code: " + """print("I like ding dongs", 1234, "You're mean");""")
-    val x = parseCode("""print("I like ding dongs", 1234, "You're mean");""")
-    Interpreter().run(x)
+    Interpreter().run(parseCode("""print("I like ding dongs", 1234, "You're mean");"""))
+
+    println("\nDefault parameters")
+    println("Code: " + """fun x(y = 0) {print(y);} x(); x(1);""")
+    Interpreter().run(parseCode("""fun x(y = 0) {print(y);} x(); x(1);"""))
 }
 
 fun parseExamples() {
