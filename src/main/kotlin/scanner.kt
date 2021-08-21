@@ -6,7 +6,7 @@ class Tokenizer(private val code: String) {
     private var rules: MutableList<Rule> = mutableListOf(
         Rule(true, "OPERATOR", "+-/*;[](){}.!,"),
         Rule(false, "NUMBER", "[0-9]|[\\.]"),
-        Rule(false, "LOGIC", "[\\||\\&|\\=|\\>|\\<|\\!]"),
+        Rule(false, "LOGIC", "[\\||\\&|\\=|\\>|\\<|\\!\\#]"),
         Rule(false, "ORDER", "[A-Z]+"),
         Rule(false, "NEW-LINE", "[\\r\\n]+")
     )

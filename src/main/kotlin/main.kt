@@ -53,4 +53,16 @@ fun runExamples() {
     println("\nDefault parameters")
     println("Code: " + """fun x(y = 0) {print(y);} x(); x(1);""")
     Interpreter().run(parseCode("""fun x(y = 0) {print(y);} x(); x(1);"""))
+
+    println("\nPrint empty obj")
+    println("Code: " + """let obj = #> <#; print(obj);""")
+    Interpreter().run(parseCode("""let obj = #> <#; print(obj);"""))
+
+    println("\nPrint obj with key")
+    println("Code: " + """let obj = #> x to 0 <#; print(obj);""")
+    Interpreter().run(parseCode("""let obj = #> x to 0 <#; print(obj);"""))
+
+    println("\nPrint key of an obj")
+    println("Code: " + """let obj = #> x to 0 <#; print(obj.x);""")
+    Interpreter().run(parseCode("""let obj = #> x to 0 <#; print(obj.x);"""))
 }

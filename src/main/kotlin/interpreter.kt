@@ -6,14 +6,32 @@ class Interpreter {
     private var code = mutableListOf<Node>()
 
     init {
-        globals.define("print", VariableValue("Function", (object : PartSCallable {
-            override fun call(interpreter: Interpreter, arguments: List<VariableValue?>): VariableValue {
-                println(arguments.map { it?.value }.joinToString())
-                return VariableValue.void
+        addNative("print") { _, arguments ->
+            val args = arguments.mapNotNull { it?.value.toString() }
+            for (arg in args) {
+                println(arg)
             }
+            VariableValue.void
+        }
 
-            override fun toString(): String = "<native fn>"
-        })))
+        addNative("time") { _, _ ->
+            VariableValue("Number", (currentTimeMillis() / 1000L).toDouble())
+        }
+    }
+
+    private fun addNative(name: String, func: (Interpreter, List<VariableValue?>) -> VariableValue) {
+        globals.define(name, VariableValue("Function", (
+                object : PartSCallable {
+                    override fun call(
+                        interpreter: Interpreter,
+                        arguments: List<VariableValue?>
+                    ): VariableValue {
+                        return func.invoke(interpreter, arguments)
+                    }
+
+                    override fun toString(): String = "<native fn $name>"
+                }
+                )))
     }
 
     fun run(code: List<Node>) {
@@ -39,6 +57,8 @@ class Interpreter {
             if (node.op == "MINUS") -toNumber(node.expr)
             else !toBoolean(node.expr)
         }
+        is ObjectNode -> runObject(node)
+        is DotNode -> runDot(node)
         else -> {
             throw Error("Unexpected node type '${node}'")
         }
@@ -54,6 +74,7 @@ class Interpreter {
             value = when (tempNode) {
                 is LiteralNode -> VariableValue(tempNode.type, tempNode.value)
                 is FunctionNode -> VariableValue("Function", runFunction(tempNode, declare = false))
+                is ObjectNode -> VariableValue("Object", runObject(tempNode).value)
                 else -> value
             }
             environment.define(node.name, value)
@@ -69,6 +90,7 @@ class Interpreter {
             value = when (tempNode) {
                 is LiteralNode -> ConstValue(tempNode.type, tempNode.value)
                 is FunctionNode -> ConstValue("Function", runFunction(tempNode, declare = false))
+                is ObjectNode -> ConstValue("Object", runObject(tempNode).value)
                 else -> value
             }
             environment.define(node.name, value)
@@ -162,10 +184,45 @@ class Interpreter {
         value = when (node.value) {
             is LiteralNode -> VariableValue((node.value as LiteralNode).type, (node.value as LiteralNode).value)
             is FunctionNode -> VariableValue("Function", runFunction(node.value as FunctionNode, declare = false))
+            is ObjectNode -> VariableValue("Object", runObject(node.value as ObjectNode).value)
             else -> runNode(node.value as Node) as VariableValue
         }
         environment.assign(node.name, value)
         return value
+    }
+
+    private fun runObject(node: ObjectNode): VariableValue {
+        val mappedMap = mutableMapOf<String, VariableValue>()
+
+        for (key in node.map.keys) mappedMap[key] = runNode(node.map[key]!!) as VariableValue
+
+        return VariableValue("Object", PartSInstance(mappedMap))
+    }
+
+    private fun runDot(node: DotNode): VariableValue {
+        val accessFrom = runNode(node.accessFrom)
+
+        val objectKey = if (node.accessTo is VariableNode) {
+            (node.accessTo as VariableNode).name
+        } else {
+            when (val accessTo = runNode(node.accessTo)) {
+                is VariableValue -> when (accessTo.type) {
+                    "Number", "String", "Boolean" -> accessTo.value.toString()
+                    else -> throw RuntimeError("Invalid access key")
+                }
+                else -> throw RuntimeError("Invalid access key")
+            }
+        }
+
+
+        return when (accessFrom) {
+            is VariableValue -> when (accessFrom.type) {
+                "Object" -> (accessFrom.value as PartSInstance).map[objectKey] ?: VariableValue.void
+                else -> throw RuntimeError("STD methods for type: '${accessFrom.type}' are not implemented")
+            }
+            is PartSInstance -> accessFrom.map[objectKey] ?: VariableValue.void
+            else -> VariableValue.void
+        }
     }
 
     private fun runEnclosed(node: Node): VariableValue {
@@ -181,9 +238,11 @@ class Interpreter {
                 "Number", "String" -> "${it.value}".isNotEmpty()
                 "Boolean" -> "${it.value}" == "true"
                 "Function" -> true
+                "Object" -> (it as PartSInstance).map.isNotEmpty()
                 else -> false
             }
             is FunctionValue -> true
+            is PartSInstance -> it.map.isNotEmpty()
             else -> false
         }
     } ?: false
@@ -198,9 +257,11 @@ class Interpreter {
                 }
                 "Boolean" -> if ("${it.value}" == "true") 1.0 else 0.0
                 "Function" -> 1.0
+                "Object" -> (it as PartSInstance).map.size.toDouble()
                 else -> 0.0
             }
             is FunctionValue -> 1.0
+            is PartSInstance -> it.map.size.toDouble()
             else -> 0.0
         }
     }
@@ -247,11 +308,13 @@ class IfNode(var condition: Node, var thenBranch: Node, var elseBranch: Node?) :
 class BinaryNode(var op: String, var left: Node, var right: Node) : Node
 class CallNode(var name: String, var args: List<Node>) : Node
 class BlockNode(var body: MutableList<Node>) : Node
+class ObjectNode(var map: MutableMap<String, Node>) : Node
 
 class ReturnNode(var expr: Node) : Node
 class VariableNode(var name: String) : Node
 class UnaryNode(var op: String, var expr: Node) : Node
 class LiteralNode(var type: String, var value: Any?) : Node
+class DotNode(var accessFrom: Node, var accessTo: Node) : Node
 
 open class VariableValue(var type: String, var value: Any?) {
     companion object {
@@ -289,4 +352,16 @@ class DefaultParameter(name: String, val value: Node) : FunctionParameter(name)
 
 interface PartSCallable {
     fun call(interpreter: Interpreter, arguments: List<VariableValue?>): VariableValue
+}
+
+class PartSInstance(val map: MutableMap<String, VariableValue>) {
+    override fun toString(): String {
+        if (map.isEmpty()) return "#> Empty #<"
+        val length = map.keys.maxByOrNull { it.length }!!.length.coerceAtLeast("key ".length)
+        var string = "Key${" ".repeat(length - "key".length)} - Property\n"
+        for (key in map.keys) {
+            string += "$key${" ".repeat(length - key.length)} | ${if (map[key] is VariableValue) map[key]!!.value.toString() else map[key]!!.toString()}\n"
+        }
+        return string
+    }
 }

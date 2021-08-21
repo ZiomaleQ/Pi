@@ -3,7 +3,7 @@ data class Token(var type: String, var value: String, val length: Int, val line:
     override fun toString(): String = "Token of type $type with value $value"
     fun parse(): Token {
         if (parsed) return this
-        val keywords = listOf("and", "else", "false", "if", "let", "nil", "true", "fun", "return", "const")
+        val keywords = listOf("and", "else", "false", "if", "let", "nil", "true", "fun", "return", "const", "to")
         val operators = mapOf(
             '+' to "PLUS", '-' to "MINUS",
             '/' to "SLASH", '*' to "STAR",
@@ -18,7 +18,8 @@ data class Token(var type: String, var value: String, val length: Int, val line:
             LO("<", "LESS"), LO("<=", "LESS_EQUAL"),
             LO(">", "GREATER"), LO(">=", "GREATER_EQUAL"),
             LO("!", "BANG"), LO("!=", "BANG_EQUAL"),
-            LO("||", "OR"), LO("&&", "AND")
+            LO("||", "OR"), LO("&&", "AND"),
+            LO("#>", "OBJ_START"), LO("<#", "OBJ_END"),
         ).groupBy { it.value.length }
         when (type) {
             "NUMBER" -> value = value.toDouble().toString()

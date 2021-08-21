@@ -101,6 +101,7 @@ class Parser(private val code: MutableList<Token>) {
                 loop@ while (true) {
                     expr = when {
                         match("LEFT_PAREN") -> finishCall(expr as VariableNode)
+                        match("DOT") -> DotNode(expr, expression())
                         else -> break@loop
                     }
                 }
@@ -131,7 +132,25 @@ class Parser(private val code: MutableList<Token>) {
         }
         match("NIL") -> LiteralNode(type = "Void", value = null)
         match("NUMBER", "STRING") -> LiteralNode(type = lastToken.type.toCamelCase(), value = lastToken.value)
-        else -> error("Expect expression. ${peek().value}")
+        match("OBJ_START") -> {
+            val map = mutableMapOf<String, Node>()
+            if (peek().type != "OBJ_END") {
+                do {
+                    val key = if (match("IDENTIFIER", "NUMBER", "STRING"))
+                        lastToken.value
+                    else
+                        error("Invalid object key, expected one of: identifier, number, string")
+
+                    consume("TO", "Expected 'to' after object key, got ${peek().value}")
+
+                    val exp = expression()
+                    map[key] = exp
+                } while (match("COMMA"))
+            }
+            consume("OBJ_END", "Expected '<#' after object body, got ${peek().value}")
+            ObjectNode(map)
+        }
+        else -> error("Expected expression. Got ${peek().value}")
     }
 
     private fun consume(type: String, message: String): Token = if (match(type)) lastToken else error(message)

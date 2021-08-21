@@ -42,3 +42,11 @@ Const and let:
 const x = 0;
 x = 1; "Throws error";
 ```
+
+Create objects and store data (for now it doesn't support assigning):
+
+```
+let obj = #> x to 0 #<
+print(obj.x)
+```
+
