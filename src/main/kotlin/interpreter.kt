@@ -7,8 +7,7 @@ class Interpreter {
 
     init {
         addNative("print") { _, arguments ->
-            val args = arguments.mapNotNull { it?.value.toString() }
-            for (arg in args) {
+            for (arg in arguments.mapNotNull { it?.value.toString() }) {
                 println(arg)
             }
             VariableValue.void
@@ -34,11 +33,11 @@ class Interpreter {
                 )))
     }
 
-    fun run(code: List<Node>) {
+    fun run(code: List<Node>, timeTaken: Boolean = true) {
         this.code.addAll(code)
         val time = currentTimeMillis().toDouble()
         while (this.code.size != 0) runNode(advance())
-        println("Successfully run code in ${(currentTimeMillis().toDouble() - time) / 1000.0}s")
+        if (timeTaken) println("Successfully run code in ${(currentTimeMillis().toDouble() - time) / 1000.0}s")
     }
 
     fun runNode(node: Node) = when (node) {
@@ -269,6 +268,13 @@ class Interpreter {
     private fun advance() = code.removeFirst()
 }
 
+fun Interpreter.run(code: String, timeTaken: Boolean = true) {
+    val tokens = scanTokens(code)
+    val parsed = Parser(tokens).parse()
+
+    this.run(parsed, timeTaken)
+}
+
 
 class Environment(var enclosing: Environment? = null) {
     private val values: MutableMap<String, VariableValue> = mutableMapOf()
@@ -324,7 +330,7 @@ open class VariableValue(var type: String, var value: Any?) {
 
 class ConstValue(type: String, value: Any?) : VariableValue(type, value)
 
-class FunctionValue(var declaration: FunctionDeclaration, var closure: Environment? = null) : PartSCallable {
+class FunctionValue(var declaration: FunctionDeclaration) : PartSCallable {
     override fun toString() = "${declaration.name} function"
     override fun call(interpreter: Interpreter, arguments: List<VariableValue?>): VariableValue {
         val map = mutableMapOf<String, VariableValue>()
