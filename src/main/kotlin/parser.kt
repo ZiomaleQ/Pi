@@ -87,25 +87,20 @@ class Parser(private val code: MutableList<Token>) {
 
     private fun expression(): Node {
         var expr = primary()
-        expr = when {
-            match(
-                "AND", "OR", "GREATER", "GREATER_EQUAL", "LESS", "PLUS",
-                "LESS_EQUAL", "BANG_EQUAL", "EQUAL_EQUAL", "SLASH", "STAR", "MINUS"
-            ) -> BinaryNode(op = lastToken.type, left = expr, right = expression())
-            match("BANG", "MINUS") -> UnaryNode(op = lastToken.value, expr = expression())
-            match("EQUAL") -> when (expr) {
-                is VariableNode -> AssignNode(name = expr.name, value = expression())
-                else -> error("Invalid assignment target")
-            }
-            else -> {
-                loop@ while (true) {
-                    expr = when {
-                        match("LEFT_PAREN") -> finishCall(expr as VariableNode)
-                        match("DOT") -> DotNode(expr, expression())
-                        else -> break@loop
-                    }
+        while (true) {
+            expr = when {
+                match(
+                    "AND", "OR", "GREATER", "GREATER_EQUAL", "LESS", "PLUS",
+                    "LESS_EQUAL", "BANG_EQUAL", "EQUAL_EQUAL", "SLASH", "STAR", "MINUS"
+                ) -> BinaryNode(op = lastToken.type, left = expr, right = expression())
+                match("BANG", "MINUS") -> UnaryNode(op = lastToken.value, expr = expression())
+                match("EQUAL") -> when (expr) {
+                    is VariableNode -> AssignNode(name = expr.name, value = expression())
+                    else -> error("Invalid assignment target")
                 }
-                expr
+                match("LEFT_PAREN") -> finishCall(expr as VariableNode)
+                match("DOT") -> DotNode(expr, expression())
+                else -> break
             }
         }
         return expr

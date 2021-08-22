@@ -7,9 +7,13 @@ val interpreter = Interpreter()
 fun main(args: Array<String>) {
     if (args.isEmpty()) runREPL()
     else {
-        val file = File(args[0])
-        val code = file.readText()
-        interpreter.run(code)
+        if (args[0] == "test") {
+            interpreter.runTests()
+        } else {
+            val file = File(args[0])
+            val code = file.readText()
+            interpreter.run(code)
+        }
     }
 }
 

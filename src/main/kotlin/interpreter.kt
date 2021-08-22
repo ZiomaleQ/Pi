@@ -251,7 +251,7 @@ class Interpreter {
             is VariableValue -> when (it.type) {
                 "Number", "String" -> try {
                     "${it.value}".toDouble()
-                } catch (e: Error) {
+                } catch (e: Exception) {
                     0.0
                 }
                 "Boolean" -> if ("${it.value}" == "true") 1.0 else 0.0
@@ -266,6 +266,31 @@ class Interpreter {
     }
 
     private fun advance() = code.removeFirst()
+
+    fun runTests() {
+        val tests = listOf(
+            """let x = 0;""",
+            """"I like wolfs";""",
+            """if (true) print("Hack"); else print("Bruh");""",
+            """fun fib(n) { if (n <= 1) return 1; else return fib(n - 1) + fib(n - 2); } print(fib(5));""",
+            """fun fight(should = false) { if(should) print("We fight boiz"); else print("We don't fight boiz");}""",
+            """let obj = #> x to 0 <#; print(obj.x);"""
+        )
+
+        for (test in tests) {
+            println("Executing now: $test\n")
+            //Clearing variables and stuff
+            environment = globals
+            code = mutableListOf()
+            // Parse code
+            val tokens = scanTokens(test)
+            println(tokens.joinToString(" ") { if(it.type != "SEMICOLON") it.value else "${it.value}\n"  })
+            val parsed = Parser(tokens).parse()
+            for (parsedNode in parsed) println(parsedNode)
+
+            this.run(parsed, false)
+        }
+    }
 }
 
 fun Interpreter.run(code: String, timeTaken: Boolean = true) {

@@ -18,6 +18,10 @@ tasks.withType<KotlinCompile> {
     kotlinOptions.jvmTarget = "11"
 }
 
+application {
+    mainClass.set("MainKt")
+}
+
 tasks.withType<Jar> {
     // Without this you'll get a "No main manifest attribute" error
     manifest {
