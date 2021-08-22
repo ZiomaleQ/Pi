@@ -58,6 +58,10 @@ fun runExamples() {
     println("Code: " + """let obj = #> <#; print(obj);""")
     Interpreter().run(parseCode("""let obj = #> <#; print(obj);"""))
 
+    println("\nPrint nested obj")
+    println("Code: " + """let obj = #> obj to #> <# <#; print(obj.obj);""")
+    Interpreter().run(parseCode("""let obj = #> obj to #> <# <#; print(obj.obj);"""))
+
     println("\nPrint obj with key")
     println("Code: " + """let obj = #> x to 0 <#; print(obj);""")
     Interpreter().run(parseCode("""let obj = #> x to 0 <#; print(obj);"""))
