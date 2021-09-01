@@ -1,37 +1,8 @@
 import java.lang.System.*
 
 class Interpreter {
-    private val globals = Environment()
-    private var environment = globals
+    private var environment = Environment.asGlobal().enclose()
     private var code = mutableListOf<Node>()
-
-    init {
-        addNative("print") { _, arguments ->
-            for (arg in arguments.mapNotNull { it?.value.toString() }) {
-                println(arg)
-            }
-            VariableValue.void
-        }
-
-        addNative("time") { _, _ ->
-            VariableValue("Number", (currentTimeMillis() / 1000L).toDouble())
-        }
-    }
-
-    private fun addNative(name: String, func: (Interpreter, List<VariableValue?>) -> VariableValue) {
-        globals.define(name, VariableValue("Function", (
-                object : PartSCallable {
-                    override fun call(
-                        interpreter: Interpreter,
-                        arguments: List<VariableValue?>
-                    ): VariableValue {
-                        return func.invoke(interpreter, arguments)
-                    }
-
-                    override fun toString(): String = "<native fn $name>"
-                }
-                )))
-    }
 
     fun run(code: List<Node>, timeTaken: Boolean = true) {
         this.code.addAll(code)
@@ -201,10 +172,32 @@ class Interpreter {
     private fun runDot(node: DotNode): VariableValue {
         val accessFrom = runNode(node.accessFrom)
 
-        val objectKey = if (node.accessTo is VariableNode) {
-            (node.accessTo as VariableNode).name
-        } else {
-            when (val accessTo = runNode(node.accessTo)) {
+        if (node.accessTo is AssignNode) {
+            val nodeAT = node.accessTo as AssignNode
+            if (accessFrom is PartSInstance) accessFrom.map[nodeAT.name] = runNode(nodeAT.value!!) as VariableValue
+        }
+
+        val objectKey = when (node.accessTo) {
+            is VariableNode -> (node.accessTo as VariableNode).name
+            is AssignNode -> when (accessFrom) {
+                is PartSInstance -> {
+                    val nodeAT = (node.accessTo as AssignNode)
+                    accessFrom.map[nodeAT.name] = runNode(nodeAT.value!!) as VariableValue
+                    //Object assign basically = 'obj.x = 0'
+                    return VariableValue.void
+                }
+                is VariableValue -> {
+                    if (accessFrom.type == "Object") {
+                        val getFrom = accessFrom.value as PartSInstance
+                        val nodeAT = (node.accessTo as AssignNode)
+                        getFrom.map[nodeAT.name] = runNode(nodeAT.value!!) as VariableValue
+                        //Object assign basically = 'obj.x = 0'
+                        return VariableValue.void
+                    } else throw RuntimeError("Invalid assignment target")
+                }
+                else -> throw RuntimeError("This shit shouldn't happen")
+            }
+            else -> when (val accessTo = runNode(node.accessTo)) {
                 is VariableValue -> when (accessTo.type) {
                     "Number", "String", "Boolean" -> accessTo.value.toString()
                     else -> throw RuntimeError("Invalid access key")
@@ -212,7 +205,6 @@ class Interpreter {
                 else -> throw RuntimeError("Invalid access key")
             }
         }
-
 
         return when (accessFrom) {
             is VariableValue -> when (accessFrom.type) {
@@ -274,17 +266,19 @@ class Interpreter {
             """if (true) print("Hack"); else print("Bruh");""",
             """fun fib(n) { if (n <= 1) return 1; else return fib(n - 1) + fib(n - 2); } print(fib(5));""",
             """fun fight(should = false) { if(should) print("We fight boiz"); else print("We don't fight boiz");}""",
-            """let obj = #> x to 0 <#; print(obj.x);"""
+            """let obj = #> x to 0 <#; print(obj.x);""",
+            """let obj = #> x to 0 <#; obj.x = 1; print(obj.x);""",
+            """let obj = #> x to 0 <#; obj.x = 1; print(obj);"""
         )
 
         for (test in tests) {
             println("Executing now: $test\n")
             //Clearing variables and stuff
-            environment = globals
+            environment = Environment.asGlobal()
             code = mutableListOf()
             // Parse code
             val tokens = scanTokens(test)
-            println(tokens.joinToString(" ") { if(it.type != "SEMICOLON") it.value else "${it.value}\n"  })
+            println(tokens.joinToString(" ") { if (it.type != "SEMICOLON") it.value else "${it.value}\n" })
             val parsed = Parser(tokens).parse()
             for (parsedNode in parsed) println(parsedNode)
 
@@ -326,6 +320,41 @@ class Environment(var enclosing: Environment? = null) {
         }
         enclosing != null -> enclosing!!.assign(name, value)
         else -> throw RuntimeError("Undefined '$name' reference")
+    }
+
+    private fun addNative(name: String, func: (Interpreter, List<VariableValue?>) -> VariableValue) {
+        define(name, VariableValue("Function", (
+                object : PartSCallable {
+                    override fun call(
+                        interpreter: Interpreter,
+                        arguments: List<VariableValue?>
+                    ): VariableValue {
+                        return func.invoke(interpreter, arguments)
+                    }
+
+                    override fun toString(): String = "<native fn $name>"
+                }
+                )))
+    }
+
+    companion object {
+
+        fun asGlobal(): Environment {
+            val env = Environment()
+
+            return env.apply {
+                addNative("print") { _, arguments ->
+                    for (arg in arguments.mapNotNull { it?.value.toString() }) {
+                        println(arg)
+                    }
+                    VariableValue.void
+                }
+
+                addNative("time") { _, _ ->
+                    VariableValue("Number", (currentTimeMillis() / 1000L).toDouble())
+                }
+            }
+        }
     }
 }
 
