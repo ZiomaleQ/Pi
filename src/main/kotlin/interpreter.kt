@@ -29,6 +29,8 @@ class Interpreter {
         }
         is ObjectNode -> runObject(node)
         is DotNode -> runDot(node)
+        is ForNode -> runFor(node)
+        is RangeNode -> runRange(node)
         else -> {
             throw Error("Unexpected node type '${node}'")
         }
@@ -45,6 +47,7 @@ class Interpreter {
                 is LiteralNode -> VariableValue(tempNode.type, tempNode.value)
                 is FunctionNode -> VariableValue("Function", runFunction(tempNode, declare = false))
                 is ObjectNode -> VariableValue("Object", runObject(tempNode).value)
+                is RangeNode -> runRange(tempNode)
                 else -> value
             }
             environment.define(node.name, value)
@@ -216,6 +219,43 @@ class Interpreter {
         }
     }
 
+    private fun runFor(node: ForNode) {
+        var condition = runNode(node.range)
+
+        if (condition !is PartSInstance) {
+            if (condition is VariableValue && condition.type == "Object") condition = condition.value as PartSInstance
+            else {
+                throw RuntimeError("Only object can be a for loop condition")
+            }
+        }
+
+        var forLoopData = checkRange(condition)
+        val codeBlock = BlockNode(mutableListOf(node.body))
+
+        while (forLoopData.first) {
+            runBlock(
+                codeBlock,
+                mutableMapOf("it" to (forLoopData.second.map["current"]!!.value as Double).toVariableValue())
+            )
+            forLoopData = checkRange(condition)
+        }
+    }
+
+    private fun runRange(node: RangeNode): VariableValue {
+        val bottom = toNumber(node.bottom)
+        val top = toNumber(node.top)
+
+        return VariableValue(
+            "Object", PartSInstance(
+                mutableMapOf(
+                    "from" to bottom.toVariableValue(),
+                    "to" to top.toVariableValue(),
+                    "current" to 0.0.toVariableValue()
+                )
+            )
+        )
+    }
+
     private fun runEnclosed(node: Node): VariableValue {
         environment = environment.enclose()
         val temp = runNode(node)
@@ -237,6 +277,28 @@ class Interpreter {
             else -> false
         }
     } ?: false
+
+    private fun checkRange(range: PartSInstance): Pair<Boolean, PartSInstance> {
+        val from = range.map["from"] ?: return Pair(false, range)
+        val to = range.map["to"] ?: return Pair(false, range)
+        if (from.type == from.type && from.type == "Number") {
+            return if ((from.value as Double) >= (to.value as Double)) Pair(false, range)
+            else {
+                val curr = range.map["current"] ?: from
+                if (curr.type != "Number") Pair(false, range)
+                else {
+                    val currNum = curr.value as Double
+                    var checked = false
+                    if (currNum < to.value as Double) {
+                        range.map["current"] = (currNum + 1).toVariableValue().also { checked = true }
+                    }
+                    Pair(checked, range)
+                }
+            }
+        }
+
+        return Pair(false, range)
+    }
 
     private fun toNumber(node: Node): Double = (runNode(node) ?: 0.0).let {
         when (it) {
@@ -268,7 +330,8 @@ class Interpreter {
             """fun fight(should = false) { if(should) print("We fight boiz"); else print("We don't fight boiz");}""",
             """let obj = #> x to 0 <#; print(obj.x);""",
             """let obj = #> x to 0 <#; obj.x = 1; print(obj.x);""",
-            """let obj = #> x to 0 <#; obj.x = 1; print(obj);"""
+            """let obj = #> x to 0 <#; obj.x = 1; print(obj);""",
+            """let range = 1 to 3; for(range) { print(it); }"""
         )
 
         for (test in tests) {
@@ -369,12 +432,15 @@ class BinaryNode(var op: String, var left: Node, var right: Node) : Node
 class CallNode(var name: String, var args: List<Node>) : Node
 class BlockNode(var body: MutableList<Node>) : Node
 class ObjectNode(var map: MutableMap<String, Node>) : Node
+class ForNode(var range: Node, var body: Node) : Node
 
 class ReturnNode(var expr: Node) : Node
 class VariableNode(var name: String) : Node
 class UnaryNode(var op: String, var expr: Node) : Node
 class LiteralNode(var type: String, var value: Any?) : Node
 class DotNode(var accessFrom: Node, var accessTo: Node) : Node
+class RangeNode(var bottom: Node, var top: Node) : Node
+
 
 open class VariableValue(var type: String, var value: Any?) {
     companion object {
@@ -425,3 +491,5 @@ class PartSInstance(val map: MutableMap<String, VariableValue>) {
         return string
     }
 }
+
+fun Double.toVariableValue() = VariableValue("Number", this)

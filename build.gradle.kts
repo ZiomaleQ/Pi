@@ -24,6 +24,9 @@ application {
 
 tasks.withType<Jar> {
     // Without this you'll get a "No main manifest attribute" error
+
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+
     manifest {
         attributes["Main-Class"] = "MainKt"
     }

@@ -51,3 +51,16 @@ obj.x = 1;
 print(obj.x);
 ```
 
+Create range:
+```
+let range = 1 to 3;
+```
+
+Use for loops with range statement:
+```
+let range = 1 to 3;
+for(range) {
+  print(it);
+}
+```
+

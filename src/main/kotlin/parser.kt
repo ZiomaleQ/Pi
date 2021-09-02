@@ -70,6 +70,12 @@ class Parser(private val code: MutableList<Token>) {
                 elseBranch = if (match("ELSE")) statement() else null
             )
         }
+        match("FOR") -> {
+            consume("LEFT_PAREN", "Expect '(' after 'for'.")
+            val condition = expression()
+            consume("RIGHT_PAREN", "Expect ')' after for condition.")
+            ForNode(condition, statement())
+        }
         match("LEFT_BRACE") -> block()
         match("RETURN") -> ReturnNode(expressionStatement())
         else -> expressionStatement()
@@ -100,6 +106,7 @@ class Parser(private val code: MutableList<Token>) {
                 }
                 match("LEFT_PAREN") -> finishCall(expr as VariableNode)
                 match("DOT") -> DotNode(expr, expression())
+                match("TO") -> RangeNode(expr, expression())
                 else -> break
             }
         }
