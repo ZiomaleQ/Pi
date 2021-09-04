@@ -56,6 +56,34 @@ class Parser(private val code: MutableList<Token>) {
             consume("LEFT_BRACE", "Expect '{' before function body, got ${peek().value}")
             FunctionNode(name = name.value, parameters = params, body = block())
         }
+        match("CLASS") -> {
+            val name = if (peek().type == "IDENTIFIER") advance() else {
+                advance(); Token("IDENTIFIER", "\$Anonymous\$", "\$Anonymous\$".length, peek().line)
+            }
+
+            consume("LEFT_BRACE", "Expected '(' after class declaration, got ${peek().value}")
+
+            val functions = mutableListOf<FunctionNode>()
+            val parameters = mutableListOf<Node>()
+
+            while (peek().type != "RIGHT_BRACE") {
+                when (peek().type) {
+                    "LET", "CONST" -> {
+                        parameters.add(declaration())
+                    }
+                    "FUN" -> {
+                        val function = declaration() as FunctionNode
+                        if (function.name == "\$Anonymous\$") error("Expected name after function declaration, got: ${peek().value}")
+                        functions.add(function)
+                    }
+                    else -> error("Wrong token, expected method / member declaration")
+                }
+            }
+
+            consume("RIGHT_BRACE", "Expect '}' after function body, got ${peek().value}")
+
+            ClassNode(name.value, functions, parameters)
+        }
         else -> statement()
     }
 

@@ -1,7 +1,7 @@
 import java.lang.System.*
 
 class Interpreter {
-    private var environment = Environment.asGlobal().enclose()
+    var environment = Environment.asGlobal().enclose()
     private var code = mutableListOf<Node>()
 
     fun run(code: List<Node>, timeTaken: Boolean = true) {
@@ -31,6 +31,7 @@ class Interpreter {
         is DotNode -> runDot(node)
         is ForNode -> runFor(node)
         is RangeNode -> runRange(node)
+        is ClassNode -> runClass(node)
         else -> {
             throw Error("Unexpected node type '${node}'")
         }
@@ -48,8 +49,10 @@ class Interpreter {
                 is FunctionNode -> VariableValue("Function", runFunction(tempNode, declare = false))
                 is ObjectNode -> VariableValue("Object", runObject(tempNode).value)
                 is RangeNode -> runRange(tempNode)
+                is CallNode -> runCall(tempNode)
                 else -> value
             }
+
             environment.define(node.name, value)
         }
         return value
@@ -71,7 +74,10 @@ class Interpreter {
         return value
     }
 
-    private fun runFunction(node: FunctionNode, declare: Boolean = true): VariableValue = FunctionValue(
+    private fun runFunction(
+        node: FunctionNode,
+        declare: Boolean = true
+    ): VariableValue = FunctionValue(
         FunctionDeclaration(node.name, node.parameters, node.body)
     ).let {
         val varFunction = VariableValue("Function", it)
@@ -143,7 +149,7 @@ class Interpreter {
     private fun runCall(node: CallNode): VariableValue {
         val ref = environment[node.name] ?: throw RuntimeError("Undefined '${node.name}' reference")
         return when {
-            ref is VariableValue && ref.type == "Function" -> (ref.value as PartSCallable).call(
+            ref is VariableValue && (ref.type == "Function" || ref.type == "Class") -> (ref.value as PartSCallable).call(
                 this,
                 node.args.map { runNode(it) as? VariableValue })
             else -> throw RuntimeError("Variable '${node.name}' is not a function")
@@ -200,6 +206,7 @@ class Interpreter {
                 }
                 else -> throw RuntimeError("This shit shouldn't happen")
             }
+            is CallNode -> (node.accessTo as CallNode).name
             else -> when (val accessTo = runNode(node.accessTo)) {
                 is VariableValue -> when (accessTo.type) {
                     "Number", "String", "Boolean" -> accessTo.value.toString()
@@ -212,9 +219,48 @@ class Interpreter {
         return when (accessFrom) {
             is VariableValue -> when (accessFrom.type) {
                 "Object" -> (accessFrom.value as PartSInstance).map[objectKey] ?: VariableValue.void
-                else -> throw RuntimeError("STD methods for type: '${accessFrom.type}' are not implemented")
+                "Class" -> {
+                    val value = (accessFrom.value as PartSInstance).map[objectKey] ?: VariableValue.void
+                    if (value.type == "Void") return value
+                    if (node.accessTo is CallNode) {
+                        return when (value.type) {
+                            "Function" -> {
+                                environment = environment.enclose()
+                                environment.copy((accessFrom.value as PartSInstance).map)
+                                val returnValue = (value.value as PartSCallable).call(
+                                    this,
+                                    (node.accessTo as CallNode).args.map { runNode(it) as? VariableValue })
+                                environment = environment.enclosing!!
+                                returnValue
+                            }
+                            else -> throw RuntimeError("Member '${objectKey}' is not a function")
+                        }
+                    }
+                    return value
+                }
+                else -> {
+                    throw RuntimeError("STD methods for type: '${accessFrom.type}' are not implemented")
+                }
             }
-            is PartSInstance -> accessFrom.map[objectKey] ?: VariableValue.void
+            is PartSInstance -> {
+                val value = accessFrom.map[objectKey] ?: VariableValue.void
+                if (value.type == "Void") return value
+                if (node.accessTo is CallNode) {
+                    return when (value.type) {
+                        "Function" -> {
+                            environment = environment.enclose()
+                            environment.copy(accessFrom.map)
+                            val returnValue = (value.value as PartSCallable).call(
+                                this,
+                                (node.accessTo as CallNode).args.map { runNode(it) as? VariableValue })
+                            environment = environment.enclosing!!
+                            returnValue
+                        }
+                        else -> throw RuntimeError("Member '${objectKey}' is not a function")
+                    }
+                }
+                return value
+            }
             else -> VariableValue.void
         }
     }
@@ -254,6 +300,18 @@ class Interpreter {
                 )
             )
         )
+    }
+
+    private fun runClass(node: ClassNode) {
+        environment = environment.enclose()
+
+        for (member in node.parameters) runNode(member)
+        for (func in node.functions) runFunction(func, declare = true)
+
+        val classBody = environment.values
+        environment = environment.enclosing!!
+
+        environment.define(node.name, PartSClass(node.name, classBody).toVariableValue())
     }
 
     private fun runEnclosed(node: Node): VariableValue {
@@ -331,11 +389,16 @@ class Interpreter {
             """let obj = #> x to 0 <#; print(obj.x);""",
             """let obj = #> x to 0 <#; obj.x = 1; print(obj.x);""",
             """let obj = #> x to 0 <#; obj.x = 1; print(obj);""",
-            """let range = 1 to 3; for(range) { print(it); }"""
+            """let range = 1 to 3; for(range) { print(it); }""",
+            """class claz {fun func() {print("this is called inside class");}} let clas = claz(); clas.func();""",
+            """class claz {fun init() {print("this is called on init");}} claz();""",
+            """class claz {let x = 0;} print(claz.x);""",
+            """class claz {fun func() {print("this is called inside class");}} let clas = claz(); clas.func();""",
+            """class claz {let x = 0;fun init() {print(x);}} claz();"""
         )
 
         for (test in tests) {
-            println("Executing now: $test\n")
+            println("\nExecuting now: $test\n")
             //Clearing variables and stuff
             environment = Environment.asGlobal()
             code = mutableListOf()
@@ -359,9 +422,15 @@ fun Interpreter.run(code: String, timeTaken: Boolean = true) {
 
 
 class Environment(var enclosing: Environment? = null) {
-    private val values: MutableMap<String, VariableValue> = mutableMapOf()
+    val values: MutableMap<String, VariableValue> = mutableMapOf()
 
     fun enclose() = Environment(this)
+
+    fun copy(map: MutableMap<String, VariableValue>) {
+        for (key in map.keys) {
+            values[key] = map[key] as VariableValue
+        }
+    }
 
     fun define(name: String, value: VariableValue): VariableValue {
         if (!values.containsKey(name)) values[name] = value
@@ -433,6 +502,7 @@ class CallNode(var name: String, var args: List<Node>) : Node
 class BlockNode(var body: MutableList<Node>) : Node
 class ObjectNode(var map: MutableMap<String, Node>) : Node
 class ForNode(var range: Node, var body: Node) : Node
+class ClassNode(var name: String, var functions: MutableList<FunctionNode>, var parameters: MutableList<Node>) : Node
 
 class ReturnNode(var expr: Node) : Node
 class VariableNode(var name: String) : Node
@@ -480,7 +550,7 @@ interface PartSCallable {
     fun call(interpreter: Interpreter, arguments: List<VariableValue?>): VariableValue
 }
 
-class PartSInstance(val map: MutableMap<String, VariableValue>) {
+open class PartSInstance(val map: MutableMap<String, VariableValue>) {
     override fun toString(): String {
         if (map.isEmpty()) return "#> Empty #<"
         val length = map.keys.maxByOrNull { it.length }!!.length.coerceAtLeast("key ".length)
@@ -490,6 +560,27 @@ class PartSInstance(val map: MutableMap<String, VariableValue>) {
         }
         return string
     }
+}
+
+class PartSClass(var name: String, map: MutableMap<String, VariableValue>) : PartSInstance(map), PartSCallable {
+    override fun call(interpreter: Interpreter, arguments: List<VariableValue?>): VariableValue {
+        if (map.containsKey("init")) {
+            val value = map["init"] ?: return VariableValue.void
+            when (value.type) {
+                "Function" -> {
+                    interpreter.environment = interpreter.environment.enclose()
+                    interpreter.environment.copy(map)
+                    (value.value as FunctionValue).call(interpreter, arguments)
+                    interpreter.environment = interpreter.environment.enclosing!!
+                    return toVariableValue()
+                }
+                else -> toVariableValue()
+            }
+        }
+        return toVariableValue()
+    }
+
+    fun toVariableValue() = VariableValue("Class", this)
 }
 
 fun Double.toVariableValue() = VariableValue("Number", this)

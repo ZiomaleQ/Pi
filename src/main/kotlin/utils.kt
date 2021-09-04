@@ -3,7 +3,8 @@ data class Token(var type: String, var value: String, val length: Int, val line:
     override fun toString(): String = "Token of type $type with value $value"
     fun parse(): Token {
         if (parsed) return this
-        val keywords = listOf("and", "else", "false", "if", "let", "nil", "true", "fun", "return", "const", "to", "for")
+        val keywords =
+            listOf("and", "else", "false", "if", "let", "nil", "true", "fun", "return", "const", "to", "for", "class")
         val operators = mapOf(
             '+' to "PLUS", '-' to "MINUS",
             '/' to "SLASH", '*' to "STAR",

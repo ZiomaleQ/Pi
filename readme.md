@@ -64,3 +64,15 @@ for(range) {
 }
 ```
 
+Make class:
+```
+class firstClass {
+   let x = 0;
+   fun init() {
+     print(x)
+   }
+}
+
+print(firstClass.x); "Prints 0";
+print(firstClass()); "Prints 0;"
+```
