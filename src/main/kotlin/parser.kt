@@ -70,6 +70,7 @@ class Parser(private val code: MutableList<Token>) {
 
             val functions = mutableListOf<FunctionNode>()
             val parameters = mutableListOf<Node>()
+            val stubs = mutableListOf<ImplementNode>()
 
             while (peek().type != "RIGHT_BRACE") {
                 when (peek().type) {
@@ -81,13 +82,22 @@ class Parser(private val code: MutableList<Token>) {
                         if (function.name == "\$Anonymous\$") error("Expected name after function declaration, got: ${peek().value}")
                         functions.add(function)
                     }
+                    "IMPLEMENT" -> {
+                        advance()
+                        val funName = consume(
+                            "IDENTIFIER",
+                            "Expected name after let keyword got '${peek().value}' (${peek().type})"
+                        )
+                        consume("SEMICOLON", "Expected ';' after must-implement method declaration.")
+                        stubs.add(ImplementNode(funName.value))
+                    }
                     else -> error("Wrong token, expected method / member declaration")
                 }
             }
 
             consume("RIGHT_BRACE", "Expect '}' after function body, got ${peek().value}")
 
-            ClassNode(name.value, functions, parameters, superclass)
+            ClassNode(name.value, functions, parameters, stubs, superclass)
         }
         else -> statement()
     }

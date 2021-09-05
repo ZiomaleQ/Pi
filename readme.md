@@ -52,11 +52,13 @@ print(obj.x);
 ```
 
 Create range:
+
 ```
 let range = 1 to 3;
 ```
 
 Use for loops with range statement:
+
 ```
 let range = 1 to 3;
 for(range) {
@@ -65,6 +67,7 @@ for(range) {
 ```
 
 Make class:
+
 ```
 class firstClass {
    let x = 0;
@@ -74,5 +77,36 @@ class firstClass {
 }
 
 print(firstClass.x); "Prints 0";
-print(firstClass()); "Prints 0;"
+print(firstClass()); "Prints 0";
+```
+
+Extend a class:
+
+```
+class firstClass {
+   let x = 0;
+   fun init() {
+     print(x)
+   }
+}
+
+class secondClass: firstClass {
+   let x = 1;
+   fun init() {
+     print(x)
+     super.init()
+   }
+}
+print(secondClass()); "Prints '1 0'";
+```
+
+Make a must-implement method in class:
+
+```
+class firstClass {
+   implement next;
+}
+
+class secondClass: firstClass {}
+"Throws an error cause there is no 'next' impelementation";
 ```

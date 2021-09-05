@@ -9,7 +9,7 @@ data class Token(var type: String, var value: String, val length: Int, val line:
                 "if", "let", "nil",
                 "true", "fun", "return",
                 "const", "to", "for",
-                "class",
+                "class", "implement"
             )
         val operators = mapOf(
             '+' to "PLUS", '-' to "MINUS",

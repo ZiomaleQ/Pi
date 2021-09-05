@@ -318,7 +318,7 @@ class Interpreter {
         val classBody = environment.values
         environment = environment.enclosing!!
 
-        val clazz = PartSClass(node.name, classBody)
+        val clazz = PartSClass(node.name, node.stubs.map { it.name }.toMutableList(), classBody)
         if (superclass != null) clazz.superclass = superclass.value as PartSClass
 
         environment.define(node.name, clazz.toVariableValue())
@@ -405,7 +405,8 @@ class Interpreter {
             """class claz {let x = 0;} print(claz.x);""",
             """class claz {fun func() {print("this is called inside class");}} let clas = claz(); clas.func();""",
             """class claz {let x = 0;fun init() {print(x);}} claz();""",
-            """class claz {fun init() {print("hi");}} class clazZ: claz{fun init() {super.init();}} clazZ();"""
+            """class claz {fun init() {print("hi");}} class clazZ: claz{fun init() {super.init();}} clazZ();""",
+            """class claz {implement next;} class clazz: claz{}"""
 
         )
 
@@ -420,7 +421,11 @@ class Interpreter {
             val parsed = Parser(tokens).parse()
             for (parsedNode in parsed) println(parsedNode)
 
-            this.run(parsed, false)
+            try {
+                this.run(parsed, false)
+            } catch (e: Exception) {
+                println("ERROR: ${e.message}")
+            }
         }
     }
 }
@@ -508,6 +513,7 @@ class LetNode(var name: String, var value: Node?) : Node
 class ConstNode(var name: String, var value: Node?) : Node
 class AssignNode(var name: String, var value: Node?) : Node
 class FunctionNode(var name: String, var parameters: List<FunctionParameter>, var body: BlockNode) : Node
+class ImplementNode(var name: String) : Node
 class IfNode(var condition: Node, var thenBranch: Node, var elseBranch: Node?) : Node
 class BinaryNode(var op: String, var left: Node, var right: Node) : Node
 class CallNode(var name: String, var args: List<Node>) : Node
@@ -518,7 +524,8 @@ class ClassNode(
     var name: String,
     var functions: MutableList<FunctionNode>,
     var parameters: MutableList<Node>,
-    var superclass: String? = null
+    var stubs: MutableList<ImplementNode>,
+    var superclass: String?
 ) : Node
 
 class ReturnNode(var expr: Node) : Node
@@ -580,36 +587,61 @@ open class PartSInstance(val map: MutableMap<String, VariableValue>) {
 }
 
 class PartSClass(
-    var name: String,
+    val name: String,
+    val stubs: MutableList<String> = mutableListOf(),
     map: MutableMap<String, VariableValue> = mutableMapOf()
 ) : PartSInstance(map),
     PartSCallable {
+
+    init {
+        checkImplemented()
+    }
 
     var superclass: PartSClass? = null
         set(value) {
             if (value != null) map["super"] = value.toVariableValue()
             if (map.containsKey("super") && value == null) map.remove("super")
+            checkImplemented()
             field = value
         }
+
+    private fun checkImplemented() {
+        val localStubs = stubs
+        localStubs.addAll(superclass?.stubs ?: mutableListOf())
+        val mapped = localStubs.map { Pair(it, map[it]) }
+        val notImplemented = mutableListOf<String>()
+        for (mappedStub in mapped) {
+            if (mappedStub.second == null || mappedStub.second!!.type != "Function") {
+                notImplemented.add(mappedStub.first)
+                continue
+            }
+        }
+
+        if (notImplemented.size > 0) {
+            throw RuntimeError("Not implemented methods in '$name' class are: '${notImplemented.joinToString()}'")
+        }
+    }
+
+    fun toVariableValue() = VariableValue("Class", this)
 
     override fun call(interpreter: Interpreter, arguments: List<VariableValue?>): VariableValue {
         if (map.containsKey("init")) {
             val value = map["init"] ?: return VariableValue.void
-            when (value.type) {
+            return when (value.type) {
                 "Function" -> {
                     interpreter.environment = interpreter.environment.enclose()
                     interpreter.environment.copy(map)
                     (value.value as FunctionValue).call(interpreter, arguments)
                     interpreter.environment = interpreter.environment.enclosing!!
-                    return toVariableValue()
+                    toVariableValue()
                 }
-                else -> return toVariableValue()
+                else -> toVariableValue()
             }
         }
         return toVariableValue()
     }
 
-    fun toVariableValue() = VariableValue("Class", this)
+    override fun toString(): String = "{\n  Class name: $name with data:\n ${super.toString()}\n}"
 }
 
 fun Double.toVariableValue() = VariableValue("Number", this)
