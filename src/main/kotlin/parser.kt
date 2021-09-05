@@ -57,11 +57,16 @@ class Parser(private val code: MutableList<Token>) {
             FunctionNode(name = name.value, parameters = params, body = block())
         }
         match("CLASS") -> {
-            val name = if (peek().type == "IDENTIFIER") advance() else {
-                advance(); Token("IDENTIFIER", "\$Anonymous\$", "\$Anonymous\$".length, peek().line)
-            }
+            val name = consume("IDENTIFIER", "Expected name after class keyword got '${peek().value}' (${peek().type})")
 
-            consume("LEFT_BRACE", "Expected '(' after class declaration, got ${peek().value}")
+            val superclass = if (match("COLON")) {
+                consume(
+                    "IDENTIFIER",
+                    "Expected identifier after class inheritance operator got '${peek().value}' (${peek().type})"
+                ).value
+            } else null
+
+            consume("LEFT_BRACE", "Expected '{' after class declaration, got ${peek().value}")
 
             val functions = mutableListOf<FunctionNode>()
             val parameters = mutableListOf<Node>()
@@ -82,7 +87,7 @@ class Parser(private val code: MutableList<Token>) {
 
             consume("RIGHT_BRACE", "Expect '}' after function body, got ${peek().value}")
 
-            ClassNode(name.value, functions, parameters)
+            ClassNode(name.value, functions, parameters, superclass)
         }
         else -> statement()
     }

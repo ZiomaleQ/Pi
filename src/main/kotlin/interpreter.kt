@@ -305,13 +305,23 @@ class Interpreter {
     private fun runClass(node: ClassNode) {
         environment = environment.enclose()
 
+        var superclass: VariableValue? = null
+
+        if (node.superclass != null) {
+            superclass = environment[node.superclass!!] as? VariableValue
+            if (superclass == null || superclass.type != "Class") throw RuntimeError("Super class '${node.superclass}'isn't valid class to inherit")
+        }
+
         for (member in node.parameters) runNode(member)
         for (func in node.functions) runFunction(func, declare = true)
 
         val classBody = environment.values
         environment = environment.enclosing!!
 
-        environment.define(node.name, PartSClass(node.name, classBody).toVariableValue())
+        val clazz = PartSClass(node.name, classBody)
+        if (superclass != null) clazz.superclass = superclass.value as PartSClass
+
+        environment.define(node.name, clazz.toVariableValue())
     }
 
     private fun runEnclosed(node: Node): VariableValue {
@@ -394,7 +404,9 @@ class Interpreter {
             """class claz {fun init() {print("this is called on init");}} claz();""",
             """class claz {let x = 0;} print(claz.x);""",
             """class claz {fun func() {print("this is called inside class");}} let clas = claz(); clas.func();""",
-            """class claz {let x = 0;fun init() {print(x);}} claz();"""
+            """class claz {let x = 0;fun init() {print(x);}} claz();""",
+            """class claz {fun init() {print("hi");}} class clazZ: claz{fun init() {super.init();}} clazZ();"""
+
         )
 
         for (test in tests) {
@@ -502,7 +514,12 @@ class CallNode(var name: String, var args: List<Node>) : Node
 class BlockNode(var body: MutableList<Node>) : Node
 class ObjectNode(var map: MutableMap<String, Node>) : Node
 class ForNode(var range: Node, var body: Node) : Node
-class ClassNode(var name: String, var functions: MutableList<FunctionNode>, var parameters: MutableList<Node>) : Node
+class ClassNode(
+    var name: String,
+    var functions: MutableList<FunctionNode>,
+    var parameters: MutableList<Node>,
+    var superclass: String? = null
+) : Node
 
 class ReturnNode(var expr: Node) : Node
 class VariableNode(var name: String) : Node
@@ -562,7 +579,19 @@ open class PartSInstance(val map: MutableMap<String, VariableValue>) {
     }
 }
 
-class PartSClass(var name: String, map: MutableMap<String, VariableValue>) : PartSInstance(map), PartSCallable {
+class PartSClass(
+    var name: String,
+    map: MutableMap<String, VariableValue> = mutableMapOf()
+) : PartSInstance(map),
+    PartSCallable {
+
+    var superclass: PartSClass? = null
+        set(value) {
+            if (value != null) map["super"] = value.toVariableValue()
+            if (map.containsKey("super") && value == null) map.remove("super")
+            field = value
+        }
+
     override fun call(interpreter: Interpreter, arguments: List<VariableValue?>): VariableValue {
         if (map.containsKey("init")) {
             val value = map["init"] ?: return VariableValue.void
@@ -574,7 +603,7 @@ class PartSClass(var name: String, map: MutableMap<String, VariableValue>) : Par
                     interpreter.environment = interpreter.environment.enclosing!!
                     return toVariableValue()
                 }
-                else -> toVariableValue()
+                else -> return toVariableValue()
             }
         }
         return toVariableValue()

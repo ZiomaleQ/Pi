@@ -4,7 +4,7 @@ fun scanTokens(code: String): MutableList<Token> {
 
 class Tokenizer(private val code: String) {
     private var rules: MutableList<Rule> = mutableListOf(
-        Rule(true, "OPERATOR", "+-/*;[](){}.!,"),
+        Rule(true, "OPERATOR", "+-/*;[](){}.!:,"),
         Rule(false, "NUMBER", "[0-9]|[\\.]"),
         Rule(false, "LOGIC", "[\\||\\&|\\=|\\>|\\<|\\!\\#]"),
         Rule(false, "ORDER", "[A-Z]+"),
