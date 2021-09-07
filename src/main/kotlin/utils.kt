@@ -49,3 +49,4 @@ fun String.toCamelCase(): String = toString().let { "${it[0].uppercase()}${it.su
 
 class Return(val value: Any?) : RuntimeException(null, null, false, false)
 class RuntimeError(message: String?) : RuntimeException(message)
+

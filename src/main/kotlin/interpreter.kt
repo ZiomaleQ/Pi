@@ -1,3 +1,4 @@
+import std.createStringStd
 import java.lang.System.*
 
 class Interpreter {
@@ -218,7 +219,25 @@ class Interpreter {
 
         return when (accessFrom) {
             is VariableValue -> when (accessFrom.type) {
-                "Object" -> (accessFrom.value as PartSInstance).map[objectKey] ?: VariableValue.void
+                "Object" -> {
+                    val value = (accessFrom.value as PartSInstance).map[objectKey] ?: VariableValue.void
+                    if (value.type == "Void") return value
+                    if (node.accessTo is CallNode) {
+                        return when (value.type) {
+                            "Function" -> {
+                                environment = environment.enclose()
+                                environment.copy((accessFrom.value as PartSInstance).map)
+                                val returnValue = (value.value as PartSCallable).call(
+                                    this,
+                                    (node.accessTo as CallNode).args.map { runNode(it) as? VariableValue })
+                                environment = environment.enclosing!!
+                                returnValue
+                            }
+                            else -> throw RuntimeError("Member '${objectKey}' is not a function")
+                        }
+                    }
+                    return value
+                }
                 "Class" -> {
                     val value = (accessFrom.value as PartSInstance).map[objectKey] ?: VariableValue.void
                     if (value.type == "Void") return value
@@ -369,7 +388,7 @@ class Interpreter {
         toBoolean(it)
     } ?: false
 
-    private fun toBoolean(thing: Any): Boolean = when (thing) {
+    fun toBoolean(thing: Any): Boolean = when (thing) {
         is VariableValue -> when (thing.type) {
             "Number", "String" -> "${thing.value}".isNotEmpty()
             "Boolean" -> "${thing.value}" == "true"
@@ -382,23 +401,25 @@ class Interpreter {
         else -> false
     }
 
-    private fun toNumber(node: Node): Double = (runNode(node) ?: 0.0).let {
-        when (it) {
-            is VariableValue -> when (it.type) {
-                "Number", "String" -> try {
-                    "${it.value}".toDouble()
-                } catch (e: Exception) {
-                    0.0
-                }
-                "Boolean" -> if ("${it.value}" == "true") 1.0 else 0.0
-                "Function" -> 1.0
-                "Object" -> (it as PartSInstance).map.size.toDouble()
-                else -> 0.0
+    private fun toNumber(node: Node): Double = runNode(node)?.let {
+        toNumber(it)
+    } ?: 0.0
+
+    fun toNumber(thing: Any?): Double = when (thing) {
+        is VariableValue -> when (thing.type) {
+            "Number", "String" -> try {
+                "${thing.value}".toDouble()
+            } catch (e: Exception) {
+                0.0
             }
-            is FunctionValue -> 1.0
-            is PartSInstance -> it.map.size.toDouble()
+            "Boolean" -> if ("${thing.value}" == "true") 1.0 else 0.0
+            "Function" -> 1.0
+            "Object" -> (thing as PartSInstance).map.size.toDouble()
             else -> 0.0
         }
+        is FunctionValue -> 1.0
+        is PartSInstance -> thing.map.size.toDouble()
+        else -> 0.0
     }
 
     private fun advance() = code.removeFirst()
@@ -424,7 +445,9 @@ class Interpreter {
             """class ci: Iterable { let top = 10; let bottom = 0; let current = 0;
                 fun hasNext() { return (bottom < top) && (current < top); }
                 fun next() { return current + 1; }}
-                for(ci()) print(it);"""
+                for(ci()) print(it);""",
+            """print(String.concat(123, "123"));""",
+            """print(String.charAt("123", 1));"""
         )
 
         for (test in tests) {
@@ -520,6 +543,7 @@ class Environment(var enclosing: Environment? = null) {
                 }
 
                 define("Iterable", PartsIterable().toVariableValue())
+                define("String", createStringStd().toVariableValue())
             }
         }
     }
@@ -699,6 +723,7 @@ open class PartSClass(
 
     init {
         checkImplemented()
+        map["this"] = this.toVariableValue()
     }
 
     var superclass: PartSClass? = null
@@ -755,4 +780,24 @@ class PartsIterable : PartSClass("Iterable", mutableListOf("hasNext", "next")) {
     override fun toVariableValue() = VariableValue("Iterable", this)
 }
 
+class PartSNativeClass : PartSInstance(mutableMapOf()) {
+    fun addNativeMethod(name: String, method: (Interpreter, List<VariableValue?>) -> VariableValue) {
+        map[name] = VariableValue("Function", (
+                object : PartSCallable {
+                    override fun call(
+                        interpreter: Interpreter,
+                        arguments: List<VariableValue?>
+                    ): VariableValue {
+                        return method.invoke(interpreter, arguments)
+                    }
+
+                    override fun toString(): String = "<native fn $name>"
+                }
+                ))
+    }
+
+    fun toVariableValue(): VariableValue = VariableValue("Object", this)
+}
+
 fun Double.toVariableValue() = VariableValue("Number", this)
+fun String.toVariableValue() = VariableValue("String", this)
