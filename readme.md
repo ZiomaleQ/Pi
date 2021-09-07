@@ -110,3 +110,22 @@ class firstClass {
 class secondClass: firstClass {}
 "Throws an error cause there is no 'next' impelementation";
 ```
+
+Creating custom iterator:
+```
+class ci: Iterable {
+   let top = 10;
+   let bottom = 0;
+   let current = 0;
+
+   fun hasNext() {
+     return (bottom < top) && (current < top) 
+   }
+   
+   fun next() {
+     return current + 1;
+   }
+}
+
+for(ci()) print(it);
+```

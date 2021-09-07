@@ -93,20 +93,18 @@ class Interpreter {
     fun runBlock(node: BlockNode, map: MutableMap<String, VariableValue>? = null): Any {
         environment = environment.enclose()
         if (map != null) for (x in map.keys) environment.define(x, map[x]!!)
-        val temp = node.body
-
         try {
-            for (x in temp) {
-                runNode(x)
+            for (childNode in node.body) {
+                runNode(childNode)
             }
         } finally {
             environment = environment.enclosing!!
         }
 
-        return temp
+        return Unit
     }
 
-    private fun runBinary(node: BinaryNode) = when (node.op) {
+    private fun runBinary(node: BinaryNode): VariableValue = when (node.op) {
         "OR", "AND" -> {
             VariableValue("Boolean", toBoolean(node.left).let {
                 if (it && node.op == "AND") toBoolean(node.right)
@@ -134,7 +132,9 @@ class Interpreter {
                 "Boolean", when (node.op) {
                     "GREATER" -> left > right
                     "GREATER_EQUAL" -> left >= right
-                    "LESS" -> left < right
+                    "LESS" -> {
+                        left < right
+                    }
                     "LESS_EQUAL" -> left <= right
                     "BANG_EQUAL" -> left != right
                     "EQUAL_EQUAL" -> left == right
@@ -142,7 +142,7 @@ class Interpreter {
                 }
             )
         }
-        else -> null
+        else -> VariableValue.void
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -269,37 +269,71 @@ class Interpreter {
         var condition = runNode(node.range)
 
         if (condition !is PartSInstance) {
-            if (condition is VariableValue && condition.type == "Object") condition = condition.value as PartSInstance
+            if (condition is VariableValue && listOf(
+                    "Class",
+                    "Object",
+                    "Iterable"
+                ).contains(condition.type)
+            ) condition = condition.value as PartSInstance
             else {
-                throw RuntimeError("Only object can be a for loop condition")
+                throw RuntimeError("Only objects and classes can be for loop condition")
             }
         }
 
-        var forLoopData = checkRange(condition)
+        val hasNextRaw =
+            condition.map["hasNext"] ?: throw RuntimeError("There is no 'hasNext' function on the object")
+        if (hasNextRaw.type != "Function") throw RuntimeError("'hasNext' is not a function")
+        val hasNext = hasNextRaw.value as FunctionValue
+
+        val nextRaw =
+            condition.map["next"] ?: throw RuntimeError("There is no 'next' function on the object")
+        if (nextRaw.type != "Function") throw RuntimeError("'next' is not a function")
+        val next = nextRaw.value as FunctionValue
         val codeBlock = BlockNode(mutableListOf(node.body))
 
-        while (forLoopData.first) {
+        var `continue` = toBoolean(condition.runWithContext(hasNext, interpreter, emptyList()))
+
+        while (`continue`) {
+            condition.map["current"] = condition.runWithContext(next, interpreter, emptyList())
             runBlock(
                 codeBlock,
-                mutableMapOf("it" to (forLoopData.second.map["current"]!!.value as Double).toVariableValue())
+                mutableMapOf("it" to (condition.map["current"] ?: VariableValue.void))
             )
-            forLoopData = checkRange(condition)
+            `continue` = toBoolean(condition.runWithContext(hasNext, interpreter, emptyList()))
         }
     }
 
     private fun runRange(node: RangeNode): VariableValue {
-        val bottom = toNumber(node.bottom)
+        val bottom = toNumber(node.bottom) - 1
         val top = toNumber(node.top)
 
-        return VariableValue(
-            "Object", PartSInstance(
-                mutableMapOf(
-                    "from" to bottom.toVariableValue(),
-                    "to" to top.toVariableValue(),
-                    "current" to 0.0.toVariableValue()
-                )
+        val hasNext = FunctionValue(
+            FunctionDeclaration(
+                "hasNext",
+                listOf(), Parser(scanTokens("{ return (bottom < top) && (current < top);}")).parse()[0] as BlockNode
             )
         )
+        val next = FunctionValue(
+            FunctionDeclaration(
+                "next", listOf(),
+                Parser(scanTokens("{ return current + 1; }")).parse()[0] as BlockNode
+            )
+        )
+
+        val claz = PartSClass(
+            "Range",
+            mutableListOf(),
+            mutableMapOf(
+                "bottom" to bottom.toVariableValue(),
+                "top" to top.toVariableValue(),
+                "current" to bottom.toVariableValue(),
+                "hasNext" to hasNext.toVariableValue(),
+                "next" to next.toVariableValue()
+            )
+        )
+        claz.superclass = PartsIterable()
+
+        return claz.toVariableValue()
     }
 
     private fun runClass(node: ClassNode) {
@@ -309,7 +343,7 @@ class Interpreter {
 
         if (node.superclass != null) {
             superclass = environment[node.superclass!!] as? VariableValue
-            if (superclass == null || superclass.type != "Class") throw RuntimeError("Super class '${node.superclass}'isn't valid class to inherit")
+            if (superclass == null || superclass.value !is PartSClass) throw RuntimeError("Super class '${node.superclass}'isn't valid class to inherit")
         }
 
         for (member in node.parameters) runNode(member)
@@ -332,40 +366,20 @@ class Interpreter {
     }
 
     private fun toBoolean(node: Node): Boolean = runNode(node)?.let {
-        when (it) {
-            is VariableValue -> when (it.type) {
-                "Number", "String" -> "${it.value}".isNotEmpty()
-                "Boolean" -> "${it.value}" == "true"
-                "Function" -> true
-                "Object" -> (it as PartSInstance).map.isNotEmpty()
-                else -> false
-            }
-            is FunctionValue -> true
-            is PartSInstance -> it.map.isNotEmpty()
-            else -> false
-        }
+        toBoolean(it)
     } ?: false
 
-    private fun checkRange(range: PartSInstance): Pair<Boolean, PartSInstance> {
-        val from = range.map["from"] ?: return Pair(false, range)
-        val to = range.map["to"] ?: return Pair(false, range)
-        if (from.type == from.type && from.type == "Number") {
-            return if ((from.value as Double) >= (to.value as Double)) Pair(false, range)
-            else {
-                val curr = range.map["current"] ?: from
-                if (curr.type != "Number") Pair(false, range)
-                else {
-                    val currNum = curr.value as Double
-                    var checked = false
-                    if (currNum < to.value as Double) {
-                        range.map["current"] = (currNum + 1).toVariableValue().also { checked = true }
-                    }
-                    Pair(checked, range)
-                }
-            }
+    private fun toBoolean(thing: Any): Boolean = when (thing) {
+        is VariableValue -> when (thing.type) {
+            "Number", "String" -> "${thing.value}".isNotEmpty()
+            "Boolean" -> "${thing.value}" == "true"
+            "Function" -> true
+            "Object" -> (thing as PartSInstance).map.isNotEmpty()
+            else -> false
         }
-
-        return Pair(false, range)
+        is FunctionValue -> true
+        is PartSInstance -> thing.map.isNotEmpty()
+        else -> false
     }
 
     private fun toNumber(node: Node): Double = (runNode(node) ?: 0.0).let {
@@ -406,8 +420,11 @@ class Interpreter {
             """class claz {fun func() {print("this is called inside class");}} let clas = claz(); clas.func();""",
             """class claz {let x = 0;fun init() {print(x);}} claz();""",
             """class claz {fun init() {print("hi");}} class clazZ: claz{fun init() {super.init();}} clazZ();""",
-            """class claz {implement next;} class clazz: claz{}"""
-
+            """class claz {implement next;} class clazz: claz{}""",
+            """class ci: Iterable { let top = 10; let bottom = 0; let current = 0;
+                fun hasNext() { return (bottom < top) && (current < top); }
+                fun next() { return current + 1; }}
+                for(ci()) print(it);"""
         )
 
         for (test in tests) {
@@ -417,7 +434,6 @@ class Interpreter {
             code = mutableListOf()
             // Parse code
             val tokens = scanTokens(test)
-            println(tokens.joinToString(" ") { if (it.type != "SEMICOLON") it.value else "${it.value}\n" })
             val parsed = Parser(tokens).parse()
             for (parsedNode in parsed) println(parsedNode)
 
@@ -502,6 +518,8 @@ class Environment(var enclosing: Environment? = null) {
                 addNative("time") { _, _ ->
                     VariableValue("Number", (currentTimeMillis() / 1000L).toDouble())
                 }
+
+                define("Iterable", PartsIterable().toVariableValue())
             }
         }
     }
@@ -509,34 +527,101 @@ class Environment(var enclosing: Environment? = null) {
 
 interface Node
 
-class LetNode(var name: String, var value: Node?) : Node
-class ConstNode(var name: String, var value: Node?) : Node
-class AssignNode(var name: String, var value: Node?) : Node
-class FunctionNode(var name: String, var parameters: List<FunctionParameter>, var body: BlockNode) : Node
-class ImplementNode(var name: String) : Node
-class IfNode(var condition: Node, var thenBranch: Node, var elseBranch: Node?) : Node
-class BinaryNode(var op: String, var left: Node, var right: Node) : Node
-class CallNode(var name: String, var args: List<Node>) : Node
-class BlockNode(var body: MutableList<Node>) : Node
-class ObjectNode(var map: MutableMap<String, Node>) : Node
-class ForNode(var range: Node, var body: Node) : Node
+class LetNode(var name: String, var value: Node?) : Node {
+    override fun toString() = "LetNode(name='$name', value=$value)"
+}
+
+class ConstNode(var name: String, var value: Node?) : Node {
+    override fun toString() = "ConstNode(name='$name', value=$value)"
+}
+
+class AssignNode(var name: String, var value: Node?) : Node {
+    override fun toString() = "AssignNode(name ='$name', value=$value)"
+}
+
+class FunctionNode(var name: String, var parameters: List<FunctionParameter>, var body: BlockNode) : Node {
+    override fun toString() =
+        "FunctionNode(name='$name', parameters='${parameters.joinToString(",") { if (it is DefaultParameter) "(Default: ${it.value})" else "(${it.name})" }}', body: ($body))"
+}
+
+class ImplementNode(var name: String) : Node {
+    override fun toString() = "Stub($name)"
+}
+
+class IfNode(var condition: Node, var thenBranch: Node, var elseBranch: Node?) : Node {
+    override fun toString() = "IfNode(condition = '$condition', then = '$thenBranch', else = `$elseBranch`)"
+}
+
+class BinaryNode(var op: String, var left: Node, var right: Node) : Node {
+    override fun toString() = "BinaryNode(op = '$op', left = '$left', right = '$right')"
+}
+
+class CallNode(var name: String, var args: List<Node>) : Node {
+    override fun toString() = "CallNode(name = '$name', args = ${args.joinToString()})"
+}
+
+class BlockNode(var body: MutableList<Node>) : Node {
+    override fun toString() = "BodyNode(body = '${body.joinToString()}')"
+}
+
+class ObjectNode(var map: MutableMap<String, Node>) : Node {
+    override fun toString() = "ObjectNode(map = '${map.entries.joinToString { "${it.key}:${it.value}" }}')"
+}
+
+class ForNode(var range: Node, var body: Node) : Node {
+    override fun toString() = "ForNode(range = '$range', body = '$body')"
+}
+
 class ClassNode(
     var name: String,
     var functions: MutableList<FunctionNode>,
     var parameters: MutableList<Node>,
     var stubs: MutableList<ImplementNode>,
     var superclass: String?
-) : Node
+) : Node {
+    override fun toString() =
+        "ClassNode(name = '$name', functions = '${functions.joinToString()}, parameters = '${parameters.joinToString()}, stubs = '${stubs.joinToString()}', superclass = '$superclass')"
+}
 
-class ReturnNode(var expr: Node) : Node
-class VariableNode(var name: String) : Node
-class UnaryNode(var op: String, var expr: Node) : Node
-class LiteralNode(var type: String, var value: Any?) : Node
-class DotNode(var accessFrom: Node, var accessTo: Node) : Node
-class RangeNode(var bottom: Node, var top: Node) : Node
+class ReturnNode(var expr: Node) : Node {
+    override fun toString() = "ReturnNode('$expr')"
+}
 
+class VariableNode(var name: String) : Node {
+    override fun toString() = "VariableNode('$name')"
+}
+
+class UnaryNode(var op: String, var expr: Node) : Node {
+    override fun toString() = "UnaryNode(op = '$op', expr = '$expr')"
+}
+
+class LiteralNode(var type: String, var value: Any?) : Node {
+    override fun toString() = "LiteralNode(type = '$type', value = '$value')"
+}
+
+class DotNode(var accessFrom: Node, var accessTo: Node) : Node {
+    override fun toString() = "DotNode(from = '$accessFrom', to = '$accessTo')"
+}
+
+class RangeNode(var bottom: Node, var top: Node) : Node {
+    override fun toString() = "RangeNode(from = '$bottom', to = '$top')"
+}
 
 open class VariableValue(var type: String, var value: Any?) {
+
+    override fun equals(other: Any?): Boolean {
+        return if (other !is VariableValue) false
+        else type == other.type && value == other.value
+    }
+
+    override fun hashCode(): Int {
+        var result = type.hashCode()
+        result = 31 * result + (value?.hashCode() ?: 0)
+        return result
+    }
+
+    override fun toString() = "(T: $type, V: $value)"
+
     companion object {
         var void = VariableValue("Void", null)
     }
@@ -544,7 +629,7 @@ open class VariableValue(var type: String, var value: Any?) {
 
 class ConstValue(type: String, value: Any?) : VariableValue(type, value)
 
-class FunctionValue(var declaration: FunctionDeclaration) : PartSCallable {
+open class FunctionValue(var declaration: FunctionDeclaration) : PartSCallable {
     override fun toString() = "${declaration.name} function"
     override fun call(interpreter: Interpreter, arguments: List<VariableValue?>): VariableValue {
         val map = mutableMapOf<String, VariableValue>()
@@ -561,8 +646,11 @@ class FunctionValue(var declaration: FunctionDeclaration) : PartSCallable {
         } catch (rv: Return) {
             returnValue = rv.value as VariableValue
         }
+
         return returnValue
     }
+
+    fun toVariableValue() = VariableValue("Function", this)
 }
 
 data class FunctionDeclaration(var name: String, var parameters: List<FunctionParameter>, var body: BlockNode)
@@ -584,9 +672,25 @@ open class PartSInstance(val map: MutableMap<String, VariableValue>) {
         }
         return string
     }
+
+    fun runWithContext(
+        function: FunctionValue,
+        interpreter: Interpreter,
+        arguments: List<VariableValue?>
+    ): VariableValue {
+        interpreter.environment = interpreter.environment.enclose()
+        interpreter.environment.copy(map)
+        val returnValue = function.call(interpreter, arguments)
+        val curr = interpreter.environment.values
+        for (key in map.keys) {
+            map[key] = (if (map[key] != curr[key]) curr[key] else map[key])!!
+        }
+        interpreter.environment = interpreter.environment.enclosing!!
+        return returnValue
+    }
 }
 
-class PartSClass(
+open class PartSClass(
     val name: String,
     val stubs: MutableList<String> = mutableListOf(),
     map: MutableMap<String, VariableValue> = mutableMapOf()
@@ -605,8 +709,8 @@ class PartSClass(
             field = value
         }
 
-    private fun checkImplemented() {
-        val localStubs = stubs
+    private fun checkImplemented(raise: Boolean = true): Boolean {
+        val localStubs = mutableListOf<String>()
         localStubs.addAll(superclass?.stubs ?: mutableListOf())
         val mapped = localStubs.map { Pair(it, map[it]) }
         val notImplemented = mutableListOf<String>()
@@ -618,11 +722,14 @@ class PartSClass(
         }
 
         if (notImplemented.size > 0) {
-            throw RuntimeError("Not implemented methods in '$name' class are: '${notImplemented.joinToString()}'")
+            if (raise) throw RuntimeError("Not implemented methods in '$name' class are: '${notImplemented.joinToString()}'")
+            else return false
         }
+
+        return true
     }
 
-    fun toVariableValue() = VariableValue("Class", this)
+    open fun toVariableValue() = VariableValue("Class", this)
 
     override fun call(interpreter: Interpreter, arguments: List<VariableValue?>): VariableValue {
         if (map.containsKey("init")) {
@@ -642,6 +749,10 @@ class PartSClass(
     }
 
     override fun toString(): String = "{\n  Class name: $name with data:\n ${super.toString()}\n}"
+}
+
+class PartsIterable : PartSClass("Iterable", mutableListOf("hasNext", "next")) {
+    override fun toVariableValue() = VariableValue("Iterable", this)
 }
 
 fun Double.toVariableValue() = VariableValue("Number", this)

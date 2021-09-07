@@ -8,6 +8,7 @@ class Parser(private val code: MutableList<Token>) {
                 tokens.add(declaration())
             }
         } catch (err: Error) {
+            println(code.take(2))
             println(err.message)
         }
         return tokens
@@ -171,7 +172,7 @@ class Parser(private val code: MutableList<Token>) {
     private fun primary(): Node = when {
         match("IDENTIFIER") -> VariableNode(name = lastToken.value)
         match("FALSE", "TRUE") -> LiteralNode(type = "Boolean", value = (lastToken.type == "TRUE"))
-        match("GROUPING") -> expression().let {
+        match("LEFT_PAREN") -> expression().let {
             consume("RIGHT_PAREN", "Expect ')' after expression.")
             it
         }
