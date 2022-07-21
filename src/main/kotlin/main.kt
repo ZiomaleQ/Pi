@@ -5,25 +5,36 @@ import java.io.InputStreamReader
 val interpreter = Interpreter()
 
 fun main(args: Array<String>) {
-    if (args.isEmpty()) runREPL()
-    else {
-        if (args[0] == "test") {
-            interpreter.runTests()
-        } else {
-            val file = File(args[0])
-            val code = file.readText()
-            interpreter.run(code)
-        }
+  if (args.isEmpty()) runREPL()
+  else {
+    if (args[0] == "test") {
+      interpreter.runTests()
+    } else {
+      val file = File(args[0])
+      val code = file.readText()
+      interpreter.run(code)
     }
+  }
 }
 
 fun runREPL() {
-    val input = InputStreamReader(System.`in`)
-    val reader = BufferedReader(input)
+  val input = InputStreamReader(System.`in`)
+  val reader = BufferedReader(input)
 
-    while (true) {
-        print("> ")
-        val line = reader.readLine() ?: break
-        interpreter.run(line, false)
+  println("Start line with ':{' to see ast")
+
+  while (true) {
+    print("> ")
+    val line = reader.readLine() ?: break
+    try {
+      when (line.take(2)) {
+        ":{" -> scan(line.substring(2))
+        "><" -> interpreter.run(line.substring(2), true)
+        else -> interpreter.run(line, false)
+      }
+    } catch (err: RuntimeError) {
+      println(err.message)
+      continue
     }
+  }
 }
