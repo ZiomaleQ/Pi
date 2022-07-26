@@ -92,3 +92,7 @@ class RangeNode(var bottom: Node, var top: Node) : Node {
 class ArrayNode(var data: MutableList<Node>) : Node {
   override fun toString() = "ArrayNode(data = [${data.joinToString(", ")}])"
 }
+
+class ImportNode(var import: MutableList<ImportIdentifier>, var from: String) : Node {
+  override fun toString() = "Import {${import.joinToString(", ")}} from '$from'"
+}

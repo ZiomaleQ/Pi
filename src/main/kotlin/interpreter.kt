@@ -1,4 +1,6 @@
+import java.io.File
 import java.lang.System.*
+import java.net.URL
 
 class Interpreter {
   var environment = Environment.asGlobal().enclose()
@@ -11,7 +13,7 @@ class Interpreter {
     if (timeTaken) println("Successfully run code in ${(currentTimeMillis().toDouble() - time) / 1000.0}s")
   }
 
-  fun runNode(node: Node) = when (node) {
+  fun runNode(node: Node): Any? = when (node) {
     is LetNode -> runLet(node)
     is ConstNode -> runConst(node)
     is FunctionNode -> runFunction(node)
@@ -32,6 +34,7 @@ class Interpreter {
     is RangeNode -> runRange(node)
     is ClassNode -> runClass(node)
     is ArrayNode -> runArray(node)
+    is ImportNode -> runImport(node)
     else -> {
       throw Error("Unexpected node type '${node}'")
     }
@@ -46,6 +49,7 @@ class Interpreter {
         is LiteralNode -> VariableValue(tempNode.type, tempNode.value)
         is FunctionNode -> VariableValue("Function", runFunction(tempNode, declare = false))
         is ObjectNode -> VariableValue("Object", runObject(tempNode).value)
+        is DotNode -> runDot(tempNode)
         is ArrayNode -> runArray(tempNode)
         is RangeNode -> runRange(tempNode)
         is CallNode -> runCall(tempNode)
@@ -66,6 +70,7 @@ class Interpreter {
         is LiteralNode -> ConstValue(tempNode.type, tempNode.value)
         is FunctionNode -> ConstValue("Function", runFunction(tempNode, declare = false))
         is ObjectNode -> ConstValue("Object", runObject(tempNode).value)
+        is DotNode -> runDot(tempNode).toConst()
         is ArrayNode -> runArray(tempNode).toConst()
         is RangeNode -> runRange(tempNode).toConst()
         is CallNode -> runCall(tempNode).toConst()
@@ -168,10 +173,9 @@ class Interpreter {
 
   @Suppress("UNCHECKED_CAST")
   private fun runCall(node: CallNode): VariableValue {
-    val ref = environment[node.name] ?: throw RuntimeError("Undefined '${node.name}' reference")
-    return when {
-      ref is VariableValue && (ref.type == "Function" || ref.type == "Class") -> (ref.value as PartSCallable).call(this,
-        node.args.map { runNode(it) as? VariableValue })
+    val ref = environment[node.name]
+    return when (ref.type) {
+      "Function", "Class" -> (ref.value as PartSCallable).call(this, node.args.map { runNode(it) as? VariableValue })
       else -> throw RuntimeError("Variable '${node.name}' is not a function")
     }
   }
@@ -399,8 +403,8 @@ class Interpreter {
     var superclass: VariableValue? = null
 
     if (node.superclass != null) {
-      superclass = environment[node.superclass!!] as? VariableValue
-      if (superclass == null || superclass.value !is PartSClass) throw RuntimeError("Super class '${node.superclass}'isn't valid class to inherit")
+      superclass = environment[node.superclass!!]
+      if (superclass.value !is PartSClass) throw RuntimeError("Super class '${node.superclass}'isn't valid class to inherit")
     }
 
     for (member in node.parameters) runNode(member)
@@ -424,6 +428,53 @@ class Interpreter {
 
   private fun runArray(node: ArrayNode): ArrayValue {
     return node.data.mapNotNull { this.runNode(it) as VariableValue? }.toVariableValue()
+  }
+
+  private fun runImport(node: ImportNode) {
+    if (node.import.isEmpty()) return
+
+    val content = if (node.from.startsWith("http")) {
+      URL(node.from).openStream().use { it.readAllBytes() }.let { String(it, Charsets.UTF_8) }
+    } else {
+      File(node.from).readText()
+    }
+
+    try {
+      val newEnv = Interpreter().let {
+        it.run(content)
+        it.environment
+      }
+
+      if (node.import[0] is ImportAllIdentifier && node.import.size == 1) {
+        node.import[0].let { all ->
+          if (all.alias == null) {
+            environment.copy(newEnv.values)
+          } else {
+            environment.define(all.alias, VariableValue("Object", newEnv.toPartsInstance()))
+          }
+        }
+      } else {
+        val exclude = mutableListOf<String>()
+
+        node.import.forEach { import ->
+          if (import is ImportAllIdentifier) {
+            newEnv.values.filter { it.key in exclude }.toMutableMap().let {
+              //In this context it will be always defined
+              import.alias?.let { alias ->
+                environment.define(alias, VariableValue("Object", PartSInstance(it)))
+              }
+            }
+          } else {
+            val resolvedEntity = newEnv[import.name]
+            exclude.add(import.name)
+            environment.define(import.alias ?: import.name, resolvedEntity)
+          }
+
+        }
+      }
+    } catch (err: Error) {
+      error("There was error inside imported file details: ${err.message}")
+    }
   }
 
   private fun toBoolean(node: Node): Boolean = runNode(node)?.let {
@@ -551,10 +602,10 @@ class Environment(var enclosing: Environment? = null) {
     return value
   }
 
-  operator fun get(name: String): Any? = when {
-    values.containsKey(name) -> values[name]
+  operator fun get(name: String): VariableValue = when {
+    values.containsKey(name) -> values[name] ?: VariableValue.void
     enclosing != null -> enclosing!![name]
-    else -> null
+    else -> VariableValue.void
   }
 
   fun assign(name: String, value: VariableValue): Unit = when {
@@ -577,6 +628,8 @@ class Environment(var enclosing: Environment? = null) {
       override fun toString(): String = "<native fn $name>"
     })))
   }
+
+  fun toPartsInstance(): PartSInstance = PartSInstance(values)
 
   companion object {
 
@@ -660,6 +713,9 @@ data class FunctionDeclaration(var name: String, var parameters: List<FunctionPa
 
 open class FunctionParameter(val name: String)
 class DefaultParameter(name: String, val value: Node) : FunctionParameter(name)
+
+open class ImportIdentifier(val name: String, val alias: String?)
+class ImportAllIdentifier(alias: String?) : ImportIdentifier("all", alias)
 
 class ArrayValue(elts: MutableList<VariableValue>) : VariableValue("Array", null) {
   private val valueList = elts.withIndex().toMutableList()

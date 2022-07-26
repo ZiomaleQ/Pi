@@ -42,8 +42,7 @@ class Parser(private val code: MutableList<Token>) {
 
       if (peek().type != "RIGHT_PAREN") {
         do {
-          val argName =
-            consume("IDENTIFIER", "Expected identifier in function parameters, got ${peek().value}").value
+          val argName = consume("IDENTIFIER", "Expected identifier in function parameters, got ${peek().value}").value
           if (match("EQUAL")) {
             params.add(DefaultParameter(argName, expression()))
             defOnly = true
@@ -72,8 +71,7 @@ class Parser(private val code: MutableList<Token>) {
 
       val superclass = if (match("COLON")) {
         consume(
-          "IDENTIFIER",
-          "Expected identifier after class inheritance operator got '${peek().value}' (${peek().type})"
+          "IDENTIFIER", "Expected identifier after class inheritance operator got '${peek().value}' (${peek().type})"
         ).value
       } else null
 
@@ -96,8 +94,7 @@ class Parser(private val code: MutableList<Token>) {
           "IMPLEMENT" -> {
             advance()
             val funName = consume(
-              "IDENTIFIER",
-              "Expected name after let keyword got '${peek().value}' (${peek().type})"
+              "IDENTIFIER", "Expected name after let keyword got '${peek().value}' (${peek().type})"
             )
             consume("SEMICOLON", "Expected ';' after must-implement method declaration.")
             stubs.add(ImplementNode(funName.value))
@@ -110,6 +107,43 @@ class Parser(private val code: MutableList<Token>) {
 
       ClassNode(name.value, functions, parameters, stubs, superclass)
     }
+    match("IMPORT") -> when {
+      match("STAR") -> {
+        var alias: String? = null
+        if (match("AS")) alias = consume("IDENTIFIER", "Expected identifier, got '${peek().value}'").value
+        consume("FROM", "Excepted 'from' after import specifier, got '${peek().value}'")
+        primary().let {
+          if ((it !is LiteralNode) || ((it as? LiteralNode)?.type != "String")) {
+            error("Import path can only be a string, got '${peek().value}'")
+          }
+          ImportNode(import = mutableListOf(ImportAllIdentifier(alias)), from = it.value as String)
+        }
+      }
+      match("LEFT_BRACE") -> {
+        val identifiers = mutableListOf<ImportIdentifier>()
+        if (peek().type != "RIGHT_BRACE") {
+          do {
+            val import = when {
+              match("IDENTIFIER") -> advance().value
+              match("STAR") -> "#Default"
+              else -> error("Expected identifier or star, got '${peek().value}'")
+            }
+            var alias: String? = null
+            if (import == "#Default" && peek().type != "AS") error("Expected 'as' after *, got '${peek().value}'")
+            if (match("AS")) alias = consume("IDENTIFIER", "Expected identifier, got '${peek().value}'").value
+            identifiers.add(ImportIdentifier(import, alias))
+          } while (match("COMMA"))
+        }
+        consume("FROM", "Excepted 'from' after import specifier, got '${peek().value}'")
+        primary().let {
+          if ((it !is LiteralNode) || ((it as? LiteralNode)?.type != "String")) {
+            error("Import path can only be a string, got '${peek().value}'")
+          }
+          ImportNode(import = identifiers, from = it.value as String)
+        }
+      }
+      else -> error("Excepted 'from' after import specifier, got '${peek().value}'")
+    }
     else -> statement()
   }
 
@@ -119,9 +153,7 @@ class Parser(private val code: MutableList<Token>) {
       val condition = expression()
       consume("RIGHT_PAREN", "Expect ')' after if condition.")
       IfNode(
-        condition = condition,
-        thenBranch = statement(),
-        elseBranch = if (match("ELSE")) statement() else null
+        condition = condition, thenBranch = statement(), elseBranch = if (match("ELSE")) statement() else null
       )
     }
     match("FOR") -> {
@@ -144,19 +176,28 @@ class Parser(private val code: MutableList<Token>) {
     return BlockNode(body = statements)
   }
 
-  private fun expressionStatement(): Node =
-    expression().let {
-      match("SEMICOLON")
-      it
-    }
+  private fun expressionStatement(): Node = expression().let {
+    match("SEMICOLON")
+    it
+  }
 
   private fun expression(): Node {
     var expr = primary()
     while (true) {
       expr = when {
         match(
-          "AND", "OR", "GREATER", "GREATER_EQUAL", "LESS", "PLUS",
-          "LESS_EQUAL", "BANG_EQUAL", "EQUAL_EQUAL", "SLASH", "STAR", "MINUS"
+          "AND",
+          "OR",
+          "GREATER",
+          "GREATER_EQUAL",
+          "LESS",
+          "PLUS",
+          "LESS_EQUAL",
+          "BANG_EQUAL",
+          "EQUAL_EQUAL",
+          "SLASH",
+          "STAR",
+          "MINUS"
         ) -> BinaryNode(op = lastToken.type, left = expr, right = expression())
         match("BANG", "MINUS") -> UnaryNode(op = lastToken.value, expr = expression())
         match("EQUAL") -> when (expr) {
