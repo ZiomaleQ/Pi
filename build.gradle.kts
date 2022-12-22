@@ -3,15 +3,14 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    kotlin("jvm") version "1.5.0"
+    kotlin("jvm") version "1.7.20"
     application
 }
-group = "ziomaleq.dev"
+group = "tfo.dev"
 version = "1.0-SNAPSHOT"
 
 repositories {
     mavenCentral()
-    jcenter()
 }
 
 tasks.withType<KotlinCompile> {
@@ -35,6 +34,7 @@ tasks.withType<Jar> {
     from(sourceSets.main.get().output)
 
     dependsOn(configurations.runtimeClasspath)
+
     from({
         configurations.runtimeClasspath.get().filter { it.name.endsWith("jar") }.map { zipTree(it) }
     })

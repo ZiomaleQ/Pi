@@ -23,6 +23,7 @@ class Parser(private val code: MutableList<Token>) {
       if (init != null && init !is FunctionNode) consume("SEMICOLON", "Expected ';' after variable declaration.")
       LetNode(name = name.value, value = init)
     }
+
     match("CONST") -> {
       val name = consume("IDENTIFIER", "Expected name after let keyword got '${peek().value}' (${peek().type})")
       val init = if (match("EQUAL")) {
@@ -31,6 +32,7 @@ class Parser(private val code: MutableList<Token>) {
       if (init != null && init !is FunctionNode) consume("SEMICOLON", "Expected ';' after variable declaration.")
       ConstNode(name.value, init)
     }
+
     match("FUN") -> {
       val name = if (peek().type == "IDENTIFIER") advance() else {
         advance(); Token("IDENTIFIER", "\$Anonymous\$", "\$Anonymous\$".length, peek().line)
@@ -66,6 +68,7 @@ class Parser(private val code: MutableList<Token>) {
         FunctionNode(name = name.value, parameters = params, body = block())
       }
     }
+
     match("CLASS") -> {
       val name = consume("IDENTIFIER", "Expected name after class keyword got '${peek().value}' (${peek().type})")
 
@@ -86,11 +89,13 @@ class Parser(private val code: MutableList<Token>) {
           "LET", "CONST" -> {
             parameters.add(declaration())
           }
+
           "FUN" -> {
             val function = declaration() as FunctionNode
             if (function.name == "\$Anonymous\$") error("Expected name after function declaration, got: ${peek().value}")
             functions.add(function)
           }
+
           "IMPLEMENT" -> {
             advance()
             val funName = consume(
@@ -99,6 +104,7 @@ class Parser(private val code: MutableList<Token>) {
             consume("SEMICOLON", "Expected ';' after must-implement method declaration.")
             stubs.add(ImplementNode(funName.value))
           }
+
           else -> error("Wrong token, expected method / member declaration")
         }
       }
@@ -107,18 +113,20 @@ class Parser(private val code: MutableList<Token>) {
 
       ClassNode(name.value, functions, parameters, stubs, superclass)
     }
+
     match("IMPORT") -> when {
       match("STAR") -> {
         var alias: String? = null
         if (match("AS")) alias = consume("IDENTIFIER", "Expected identifier, got '${peek().value}'").value
         consume("FROM", "Excepted 'from' after import specifier, got '${peek().value}'")
         primary().let {
-          if ((it !is LiteralNode) || ((it as? LiteralNode)?.type != "String")) {
+          if ((it !is LiteralNode) || ((it as? LiteralNode)?.type != VariableType.String)) {
             error("Import path can only be a string, got '${peek().value}'")
           }
           ImportNode(import = mutableListOf(ImportAllIdentifier(alias)), from = it.value as String)
         }
       }
+
       match("LEFT_BRACE") -> {
         val identifiers = mutableListOf<ImportIdentifier>()
         if (peek().type != "RIGHT_BRACE") {
@@ -136,14 +144,16 @@ class Parser(private val code: MutableList<Token>) {
         }
         consume("FROM", "Excepted 'from' after import specifier, got '${peek().value}'")
         primary().let {
-          if ((it !is LiteralNode) || ((it as? LiteralNode)?.type != "String")) {
+          if ((it !is LiteralNode) || ((it as? LiteralNode)?.type == VariableType.String)) {
             error("Import path can only be a string, got '${peek().value}'")
           }
           ImportNode(import = identifiers, from = it.value as String)
         }
       }
+
       else -> error("Excepted 'from' after import specifier, got '${peek().value}'")
     }
+
     else -> statement()
   }
 
@@ -156,12 +166,14 @@ class Parser(private val code: MutableList<Token>) {
         condition = condition, thenBranch = statement(), elseBranch = if (match("ELSE")) statement() else null
       )
     }
+
     match("FOR") -> {
       consume("LEFT_PAREN", "Expect '(' after 'for'.")
       val condition = expression()
       consume("RIGHT_PAREN", "Expect ')' after for condition.")
-      ForNode(condition, statement())
+      ForNode(condition, statement().let { if (it is BlockNode) it else BlockNode(mutableListOf(it)) })
     }
+
     match("LEFT_BRACE") -> block()
     match("RETURN") -> ReturnNode(expressionStatement())
     match("CONTINUE") -> ContinueNode
@@ -188,6 +200,8 @@ class Parser(private val code: MutableList<Token>) {
         match(
           "AND",
           "OR",
+          "NOR",
+          "XOR",
           "GREATER",
           "GREATER_EQUAL",
           "LESS",
@@ -197,13 +211,16 @@ class Parser(private val code: MutableList<Token>) {
           "EQUAL_EQUAL",
           "SLASH",
           "STAR",
-          "MINUS"
+          "MINUS",
+          "NULL_ELSE"
         ) -> BinaryNode(op = lastToken.type, left = expr, right = expression())
+
         match("BANG", "MINUS") -> UnaryNode(op = lastToken.value, expr = expression())
         match("EQUAL") -> when (expr) {
           is VariableNode -> AssignNode(name = expr.name, value = expression())
           else -> error("Invalid assignment target")
         }
+
         match("LEFT_PAREN") -> finishCall(expr as VariableNode)
         match("DOT") -> DotNode(expr, expression())
         match("TO") -> RangeNode(expr, expression())
@@ -227,11 +244,12 @@ class Parser(private val code: MutableList<Token>) {
 
   private fun primary(): Node = when {
     match("IDENTIFIER") -> VariableNode(name = lastToken.value)
-    match("FALSE", "TRUE") -> LiteralNode(type = "Boolean", value = (lastToken.type == "TRUE"))
+    match("FALSE", "TRUE") -> LiteralNode(VariableType.Boolean, value = (lastToken.type == "TRUE"))
     match("LEFT_PAREN") -> expression().let {
       consume("RIGHT_PAREN", "Expect ')' after expression.")
       it
     }
+
     match("LEFT_BRACKET") -> {
       val list = mutableListOf<Node>()
       if (peek().type != "RIGHT_BRACKET") {
@@ -242,8 +260,16 @@ class Parser(private val code: MutableList<Token>) {
       consume("RIGHT_BRACKET", "Expected ']' after array body, got ${peek().value}")
       ArrayNode(list)
     }
-    match("NIL") -> LiteralNode(type = "Void", value = null)
-    match("NUMBER", "STRING") -> LiteralNode(type = lastToken.type.toCamelCase(), value = lastToken.value)
+
+    match("NIL") -> LiteralNode(VariableType.Void, value = null)
+    match(
+      "NUMBER",
+      "STRING"
+    ) -> LiteralNode(
+      type = if (lastToken.type.toCamelCase() == "String") VariableType.String else VariableType.Number,
+      value = lastToken.value
+    )
+
     match("OBJ_START") -> {
       val map = mutableMapOf<String, Node>()
       if (peek().type != "OBJ_END") {
@@ -260,6 +286,7 @@ class Parser(private val code: MutableList<Token>) {
       consume("OBJ_END", "Expected '<#' after object body, got ${peek().value}")
       ObjectNode(map)
     }
+
     else -> error("Expected expression. Got ${peek().value}")
   }
 

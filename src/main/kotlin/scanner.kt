@@ -25,7 +25,7 @@ class Tokenizer(private val code: String) {
         if (peek() == '"') {
           current++
           expr = ""
-          found = tokens.add(Token("STRING", expr, expr.length, line))
+          found = tokens.add(Token("STRING", expr, 0, line))
         } else {
           expr = "${peekNext()}"
           while (current < code.size && peek() != '"') expr += peekNext()

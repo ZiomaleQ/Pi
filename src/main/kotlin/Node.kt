@@ -77,7 +77,7 @@ class UnaryNode(var op: String, var expr: Node) : Node {
   override fun toString() = "UnaryNode(op = '$op', expr = '$expr')"
 }
 
-class LiteralNode(var type: String, var value: Any?) : Node {
+class LiteralNode(var type: VariableType, var value: Any?) : Node {
   override fun toString() = "LiteralNode(type = '$type', value = '$value')"
 }
 

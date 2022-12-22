@@ -5,6 +5,8 @@ data class Token(var type: String, var value: String, val length: Int, val line:
     if (parsed) return this
     val keywords = listOf(
       "and",
+      "or",
+      "xor",
       "else",
       "false",
       "if",
@@ -48,6 +50,7 @@ data class Token(var type: String, var value: String, val length: Int, val line:
       LO("!", "BANG"), LO("!=", "BANG_EQUAL"),
       LO("||", "OR"), LO("&&", "AND"),
       LO("#>", "OBJ_START"), LO("<#", "OBJ_END"),
+      LO("?>", "NULL_ELSE")
     ).groupBy { it.value.length }
     when (type) {
       "NUMBER" -> value = value.toDouble().toString()
