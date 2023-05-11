@@ -21,7 +21,7 @@ fun runREPL() {
   val input = InputStreamReader(System.`in`)
   val reader = BufferedReader(input)
 
-  println("Start line with ':{' to see ast")
+  println("Start line with: \n- ':{' to see ast \n- '><' to measure time\n- '<<' to print output")
 
   while (true) {
     print("> ")
@@ -30,6 +30,7 @@ fun runREPL() {
       when (line.take(2)) {
         ":{" -> scan(line.substring(2))
         "><" -> interpreter.run(line.substring(2), true)
+        "<<" -> interpreter.run("return " + line.substring(2))
         else -> interpreter.run(line, false)
       }
     } catch (err: RuntimeError) {

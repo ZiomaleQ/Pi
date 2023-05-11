@@ -29,6 +29,11 @@ class Interpreter {
       else !toBoolean(node.expr)
     }
 
+    is ReturnNode -> (environment["print"].value as PartSCallable).call(
+      this,
+      mutableListOf(runNode(node.expr) as? VariableValue)
+    )
+
     is ObjectNode -> runObject(node)
     is DotNode -> runDot(node)
     is ForNode -> runFor(node)
@@ -451,6 +456,7 @@ class Interpreter {
         Parser(scanTokens("{ return (bottom < top) && (current < top);}")).parse()[0] as BlockNode
       )
     )
+
     val next = FunctionValue(
       FunctionDeclaration(
         "next", listOf(), Parser(scanTokens("{ return current + 1; }")).parse()[0] as BlockNode
@@ -616,6 +622,7 @@ class Interpreter {
                 fun hasNext() { return (bottom < top) && (current < top); }
                 fun next() { return current + 1; }}
                 for(ci()) print(it);""",
+      """[2].getOrDefault(1, 5)"""
     )
 
     for (test in tests) {
@@ -834,8 +841,10 @@ class ArrayValue(elts: MutableList<VariableValue>) : VariableValue(VariableType.
 
   }
 
-  operator fun set(index: Int, value: VariableValue) {
-    val largestIn = valueList.maxOf { it.index }
+  operator fun set(index: Int, value: VariableValue) = internalSet(index, value)
+
+  private fun internalSet(index: Int, value: VariableValue) {
+    val largestIn = valueList.maxOfOrNull { it.index } ?: 0
 
     if (index < largestIn) {
       valueList.removeIf { it.index == index }
@@ -860,25 +869,22 @@ class ArrayValue(elts: MutableList<VariableValue>) : VariableValue(VariableType.
       foundIndex?.value ?: void
     }
 
-    addNativeMethod("set") { _, arguments ->
-      val largestIn = valueList.maxOfOrNull { it.index } ?: 0
+    addNativeMethod("getOrDefault") { interpreter, arguments ->
+      val num = arguments.getOrNull(0).let {
+        interpreter.toNumber(it)
+      }
 
+      val foundIndex = valueList.find { it.index == num.toInt() }
+      foundIndex?.value ?: arguments.getOrNull(1) ?: void
+    }
+
+    addNativeMethod("set") { _, arguments ->
       val index = arguments.getOrNull(0).let {
         interpreter.toNumber(it)
       }.toInt()
       val value = arguments.getOrNull(1) ?: throw RuntimeError("Can't set void, use 'nil' instead")
 
-      if (index < largestIn) {
-        valueList.removeIf { it.index == index }
-        valueList.add(IndexedValue(index, value))
-      } else {
-        val diff = index - largestIn
-        if (diff == 0) valueList.add(IndexedValue(index, value))
-        else {
-          (index..diff).forEach { valueList.add(IndexedValue(it, value)) }
-          valueList.add(IndexedValue(index, value))
-        }
-      }
+      internalSet(index, value)
 
       value
     }
@@ -1001,6 +1007,4 @@ class PartSNativeClass : PartSInstance(mutableMapOf()) {
 fun Double.toVariableValue() = VariableValue(VariableType.Number, this)
 fun List<VariableValue>.toVariableValue() = ArrayValue(this.toMutableList())
 enum class BlockReturn { Return, Break, Continue, End }
-enum class VariableType {
-  String, Boolean, Number, Void, Function, Object, Class, Iterable, Array
-}
+enum class VariableType { String, Boolean, Number, Void, Function, Object, Class, Iterable, Array }
