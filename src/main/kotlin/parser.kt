@@ -1,3 +1,7 @@
+import std.DefaultParameter
+import std.FunctionParameter
+import std.VariableType
+
 class Parser(private val code: MutableList<Token>) {
   private var lastToken: Token = Token("x", "x", 0, 0)
   private var tokens: MutableList<Node> = mutableListOf()
@@ -81,19 +85,112 @@ class Parser(private val code: MutableList<Token>) {
       consume("LEFT_BRACE", "Expected '{' after class declaration, got ${peek().value}")
 
       val functions = mutableListOf<FunctionNode>()
-      val parameters = mutableListOf<Node>()
+      val parameters = mutableListOf<DefaultProperty>()
       val stubs = mutableListOf<ImplementNode>()
+
+      var last: Node? = null
+      var lastName: String? = null
 
       while (peek().type != "RIGHT_BRACE") {
         when (peek().type) {
           "LET", "CONST" -> {
-            parameters.add(declaration())
+            val value = declaration().also { last = it }.also { lastName = null }
+            parameters.add(DefaultProperty((value as LetNode).name, value))
+          }
+
+          "GET" -> {
+            val skipParen = advance().let { it.value != it.type }
+
+            val getterName = if (!(last is ConstNode || last is LetNode || last is SetterNode)) {
+              consume("IDENTIFIER", "Expected name after 'get' operator '${peek().value}' (${peek().type})").value
+            } else {
+              when (last) {
+                is ConstNode -> (last as ConstNode).name
+                is LetNode -> (last as LetNode).name
+                is SetterNode -> lastName ?: ""
+                // shouldn't be possible
+                else -> "\$Anonymous\$"
+              }
+            }
+
+            if (!skipParen) {
+              consume("LEFT_PAREN", "Expected '(' after 'get' keyword.")
+              consume("RIGHT_PAREN", "Expected ')'  after 'get' keyword.")
+            }
+
+            consume("EQUAL", "Expected '=' after ${if (skipParen) "')'" else "'get' operator"}.")
+
+            val body = if (match("LEFT_BRACE")) block() else BlockNode(mutableListOf(expression()))
+            val index = parameters.indexOfFirst { it.name == getterName }
+
+            if (index == -1) {
+              parameters.add(ExtendedProperty(getterName, defaultValue = null, getter = GetterNode(body)))
+            } else {
+              val temp = parameters[index]
+
+              val value = when (temp.value) {
+                is LetNode -> temp.value.value
+                is ConstNode -> temp.value.value
+                else -> temp.value
+              }
+
+              parameters[index] = ExtendedProperty(
+                getterName,
+                value,
+                getter = GetterNode(body),
+                (temp as? ExtendedProperty)?.setter
+              )
+            }
+
+            lastName = getterName
+
+          }
+
+          "SET" -> {
+            val skipParen = advance().let { it.value != it.type }
+
+            val setterName = if (!(last is ConstNode || last is LetNode || last is SetterNode)) {
+              consume("IDENTIFIER", "Expected name after 'get' operator '${peek().value}' (${peek().type})").value
+            } else {
+              when (last) {
+                is ConstNode -> (last as ConstNode).name
+                is LetNode -> (last as LetNode).name
+                is SetterNode -> lastName ?: ""
+                // shouldn't be possible
+                else -> "\$Anonymous\$"
+              }
+            }
+
+            if (!skipParen) {
+              consume("LEFT_PAREN", "Expected '(' after 'get' keyword.")
+              consume("RIGHT_PAREN", "Expected ')'  after 'get' keyword.")
+            }
+
+            consume("EQUAL", "Expected '=' after ${if (skipParen) "')'" else "'get' operator"}.")
+
+            val body = if (match("LEFT_BRACE")) block() else BlockNode(mutableListOf(expression()))
+            val index = parameters.indexOfFirst { it.name == setterName }
+
+            if (index == -1) {
+              parameters.add(ExtendedProperty(setterName, defaultValue = null, setter = SetterNode(body)))
+            } else {
+              val temp = parameters[index]
+              parameters[index] = ExtendedProperty(
+                setterName,
+                (temp as? ExtendedProperty)?.value,
+                (temp as? ExtendedProperty)?.getter,
+                setter = SetterNode(body)
+              )
+            }
+
+            lastName = setterName
+
           }
 
           "FUN" -> {
             val function = declaration() as FunctionNode
             if (function.name == "\$Anonymous\$") error("Expected name after function declaration, got: ${peek().value}")
-            functions.add(function)
+            functions.add(function.also { last = it })
           }
 
           "IMPLEMENT" -> {
@@ -102,7 +199,16 @@ class Parser(private val code: MutableList<Token>) {
               "IDENTIFIER", "Expected name after let keyword got '${peek().value}' (${peek().type})"
             )
             consume("SEMICOLON", "Expected ';' after must-implement method declaration.")
-            stubs.add(ImplementNode(funName.value))
+            stubs.add(ImplementNode(funName.value).also { last = it })
+          }
+
+          "STATIC" -> {
+            advance()
+            if (listOf("LET", "CONST").contains(peek().type)) {
+              val value = declaration().also { last = it }.also { lastName = null }
+              parameters.add(DefaultProperty((value as LetNode).name, value, true))
+            }
+
           }
 
           else -> error("Wrong token, expected method / member declaration")
@@ -132,21 +238,24 @@ class Parser(private val code: MutableList<Token>) {
         if (peek().type != "RIGHT_BRACE") {
           do {
             val import = when {
-              match("IDENTIFIER") -> advance().value
+              match("IDENTIFIER") -> lastToken.value
               match("STAR") -> "#Default"
               else -> error("Expected identifier or star, got '${peek().value}'")
             }
+
             var alias: String? = null
             if (import == "#Default" && peek().type != "AS") error("Expected 'as' after *, got '${peek().value}'")
             if (match("AS")) alias = consume("IDENTIFIER", "Expected identifier, got '${peek().value}'").value
             identifiers.add(ImportIdentifier(import, alias))
           } while (match("COMMA"))
+          consume("RIGHT_BRACE", "Expected '}' after import body, got '${peek().value}'")
         }
+
         consume("FROM", "Excepted 'from' after import specifier, got '${peek().value}'")
         primary().let {
-          if ((it !is LiteralNode) || ((it as? LiteralNode)?.type == VariableType.String)) {
-            error("Import path can only be a string, got '${peek().value}'")
-          }
+          if (it !is LiteralNode) error("Only string literals in import specifier, got '${peek().value}'")
+          if (it.type != VariableType.String) error("Import path can only be a string, got '${peek().value}'")
+
           ImportNode(import = identifiers, from = it.value as String)
         }
       }
@@ -200,25 +309,41 @@ class Parser(private val code: MutableList<Token>) {
         match(
           "AND",
           "OR",
-          "NOR",
           "XOR",
-          "GREATER",
-          "GREATER_EQUAL",
-          "LESS",
           "PLUS",
-          "LESS_EQUAL",
-          "BANG_EQUAL",
-          "EQUAL_EQUAL",
           "SLASH",
           "STAR",
           "MINUS",
-          "NULL_ELSE"
+        ) -> {
+          val op = lastToken.type
+          when {
+            match("EQUAL") -> when (expr) {
+              is VariableNode -> AssignNode(
+                name = expr.name,
+                value = BinaryNode(op = op, left = expr, right = expression())
+              )
+
+              else -> error("Invalid assignment target")
+            }
+
+            else -> BinaryNode(op = lastToken.type, left = expr, right = expression())
+          }
+        }
+
+        match(
+          "NULL_ELSE",
+          "LESS_EQUAL",
+          "BANG_EQUAL",
+          "EQUAL_EQUAL",
+          "GREATER",
+          "GREATER_EQUAL",
+          "LESS"
         ) -> BinaryNode(op = lastToken.type, left = expr, right = expression())
 
-        match("BANG", "MINUS") -> UnaryNode(op = lastToken.value, expr = expression())
         match("EQUAL") -> when (expr) {
           is VariableNode -> AssignNode(name = expr.name, value = expression())
-          else -> error("Invalid assignment target")
+          is BinaryNode, is LiteralNode -> ObjectAssignNode(key = expr, value = expression())
+          else -> error("Invalid assignment target $expr")
         }
 
         match("LEFT_PAREN") -> finishCall(expr as VariableNode)
@@ -261,15 +386,8 @@ class Parser(private val code: MutableList<Token>) {
       ArrayNode(list)
     }
 
-    match("NIL") -> LiteralNode(VariableType.Void, value = null)
-    match(
-      "NUMBER",
-      "STRING"
-    ) -> LiteralNode(
-      type = if (lastToken.type.toCamelCase() == "String") VariableType.String else VariableType.Number,
-      value = lastToken.value
-    )
-
+    match("STRING") -> LiteralNode(VariableType.String, lastToken.value)
+    match("NUMBER") -> LiteralNode(VariableType.Number, lastToken.value.toDoubleOrNull() ?: 0.0)
     match("OBJ_START") -> {
       val map = mutableMapOf<String, Node>()
       if (peek().type != "OBJ_END") {
@@ -286,6 +404,8 @@ class Parser(private val code: MutableList<Token>) {
       consume("OBJ_END", "Expected '<#' after object body, got ${peek().value}")
       ObjectNode(map)
     }
+
+    match("BANG", "MINUS") -> UnaryNode(op = lastToken.value, expr = primary())
 
     else -> error("Expected expression. Got ${peek().value}")
   }

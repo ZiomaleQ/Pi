@@ -1,12 +1,15 @@
 # Want to master Parts? Check bellow
 
+Read parser, it will be faster since it's a mess of a guide
+
 Declaration:
 
 ```
 let x = 0;
+const y = 0;
 ```
 
-Comments:
+Comments :
 
 ```
 "I like wolfs";

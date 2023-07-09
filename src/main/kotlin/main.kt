@@ -3,6 +3,7 @@ import java.io.File
 import java.io.InputStreamReader
 
 val interpreter = Interpreter()
+var fileCWD: String = File("").absolutePath
 
 fun main(args: Array<String>) {
   if (args.isEmpty()) runREPL()
@@ -10,9 +11,23 @@ fun main(args: Array<String>) {
     if (args[0] == "test") {
       interpreter.runTests()
     } else {
-      val file = File(args[0])
-      val code = file.readText()
-      interpreter.run(code)
+
+      if (args.size == 1) {
+        val file = File(args[0]).also { fileCWD = it.parentFile.absolutePath }
+        val code = file.readText()
+        interpreter.run(code)
+      } else {
+        val embedded = args.contains("--embed")
+        val code = args.last().let {
+          if (File(it).exists()) File(it).also { file -> fileCWD = file.parentFile.absolutePath }.readText() else it
+        }
+        val timed = args.contains("--time")
+
+        interpreter.run(code, timed)
+        if (embedded) {
+          print(interpreter.environment.dump())
+        }
+      }
     }
   }
 }

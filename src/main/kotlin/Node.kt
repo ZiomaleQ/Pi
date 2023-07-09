@@ -1,3 +1,7 @@
+import std.DefaultParameter
+import std.FunctionParameter
+import std.VariableType
+
 sealed interface Node
 
 class LetNode(var name: String, var value: Node?) : Node {
@@ -10,6 +14,10 @@ class ConstNode(var name: String, var value: Node?) : Node {
 
 class AssignNode(var name: String, var value: Node?) : Node {
   override fun toString() = "AssignNode(name ='$name', value=$value)"
+}
+
+class ObjectAssignNode(var key: Node, var value: Node?) : Node {
+  override fun toString() = "AssignNode(name ='$key', value=$value)"
 }
 
 class FunctionNode(var name: String, var parameters: List<FunctionParameter>, var body: BlockNode) : Node {
@@ -49,7 +57,7 @@ class ForNode(var range: Node, var body: Node) : Node {
 class ClassNode(
   var name: String,
   var functions: MutableList<FunctionNode>,
-  var parameters: MutableList<Node>,
+  var parameters: MutableList<DefaultProperty>,
   var stubs: MutableList<ImplementNode>,
   var superclass: String?
 ) : Node {
@@ -95,4 +103,14 @@ class ArrayNode(var data: MutableList<Node>) : Node {
 
 class ImportNode(var import: MutableList<ImportIdentifier>, var from: String) : Node {
   override fun toString() = "Import {${import.joinToString(", ")}} from '$from'"
+}
+
+class SetterNode(var body: BlockNode) : Node {
+  override fun toString() =
+    "SetterNode(body: ($body))"
+}
+
+class GetterNode(var body: BlockNode) : Node {
+  override fun toString() =
+    "GetterNode(body: ($body))"
 }
