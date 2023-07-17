@@ -3,7 +3,7 @@ fun scanTokens(code: String): MutableList<Token> {
 }
 
 val OPERATORS = listOf('+', '-', '/', '*', ';', '[', ']', '(', ')', '{', '}', '.', ':', ',')
-val LOGIC = listOf('|', '&', '>', '<', '!', '#', '-', '=')
+val LOGIC = listOf('|', '&', '>', '<', '!', '#', '-', '=', '?')
 
 data class Rule(
   var isSingle: Boolean,
@@ -35,16 +35,17 @@ class Tokenizer(private val code: CharArray) {
     while (current < code.size) {
       var found = false
       var expr: String
+
       if (peek() == '"') {
         current++
         if (peek() == '"') {
           current++
           found = tokens.add(Token("STRING", "", 0, line))
         } else {
-          expr = "${peekNext()}"
-          while (current < code.size && peek() != '"') expr += peekNext()
-          if (peekNext() != '"') throw Error("[$line] Unterminated string")
-          found = tokens.add(Token("STRING", expr, expr.length, line))
+          expr = "${advance()}"
+          while (current < code.size && (peek() != '"' || expr.last() == '\\')) expr += advance()
+          if (current > code.size - 1 || advance() != '"') throw Error("[$line] Unterminated string")
+          found = tokens.add(Token("STRING", expr.filter { it != '\\' }, expr.length, line))
         }
       }
 
@@ -53,7 +54,7 @@ class Tokenizer(private val code: CharArray) {
 
         if (rule.isSingle) {
           if (rule.rule.invoke(peek()) && rule.additionalCheck?.invoke(peek().toString()) != false) {
-            found = tokens.add(Token(rule.name, "${peekNext()}", 1, line))
+            found = tokens.add(Token(rule.name, "${advance()}", 1, line))
             break
           }
         } else {
@@ -65,7 +66,7 @@ class Tokenizer(private val code: CharArray) {
               while (current < code.size && rule.rule.invoke(peek()) && rule.additionalCheck?.invoke(expr)
                   .let { it == null || it == true }
               )
-                expr = "$expr${peekNext()}"
+                expr = "$expr${advance()}"
               if (rule.name == "NEW-LINE") line++
               found = tokens.add(Token(rule.name, expr, expr.length, line))
               break
@@ -80,5 +81,5 @@ class Tokenizer(private val code: CharArray) {
   }
 
   private fun peek(): Char = code[current]
-  private fun peekNext(): Char = code[current++]
+  private fun advance(): Char = code[current++]
 }

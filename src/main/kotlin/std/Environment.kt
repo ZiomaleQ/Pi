@@ -4,6 +4,8 @@ import EnclosedValue
 import Interpreter
 import PartSCallable
 import RuntimeError
+import std.lib.JSON
+import std.lib.SystemSTD
 
 class Environment(var enclosing: Environment? = null) {
   val values: MutableMap<String, VariableValue<*>> = mutableMapOf()
@@ -86,14 +88,9 @@ class Environment(var enclosing: Environment? = null) {
           OptionValue.None
         }
 
-        addNative("time") { _, _ ->
-          NumberValue((System.nanoTime() / 1000L).toDouble())
-        }
+        addNative("time") { _, _ -> NumberValue((System.nanoTime() / 1000L).toDouble()) }
 
-        define(
-          "Iterable",
-          PartsIterable().toVariableValue()
-        )
+        define("Iterable", PartsIterable().toVariableValue())
         define("Option", PartSNativeClass().apply {
           addNativeProp("None", OptionValue.None)
           addNativeMethod("Some") { _, arguments ->
@@ -103,6 +100,8 @@ class Environment(var enclosing: Environment? = null) {
             else OptionValue.Some(value.unwrap())
           }
         }.toVariableValue())
+        define("JSON", JSON)
+        define("System", SystemSTD)
       }
     }
   }

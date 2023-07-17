@@ -1,15 +1,9 @@
-import std.DefaultParameter
-import std.FunctionParameter
-import std.VariableType
+import std.*
 
 sealed interface Node
 
-class LetNode(var name: String, var value: Node?) : Node {
-  override fun toString() = "LetNode(name='$name', value=$value)"
-}
-
-class ConstNode(var name: String, var value: Node?) : Node {
-  override fun toString() = "ConstNode(name='$name', value=$value)"
+class LetNode(var name: String, var value: Node?, var const: Boolean) : Node {
+  override fun toString() = "LetNode(name='$name', value=$value, const=$const)"
 }
 
 class AssignNode(var name: String, var value: Node?) : Node {
@@ -20,9 +14,9 @@ class ObjectAssignNode(var key: Node, var value: Node?) : Node {
   override fun toString() = "AssignNode(name ='$key', value=$value)"
 }
 
-class FunctionNode(var name: String, var parameters: List<FunctionParameter>, var body: BlockNode) : Node {
+class FunctionNode(var name: String?, var parameters: List<FunctionParameter>, var body: BlockNode) : Node {
   override fun toString() =
-    "FunctionNode(name='$name', parameters='${parameters.joinToString(", ") { if (it is DefaultParameter) "(Default: ${it.value})" else "(${it.name})" }}', body: ($body))"
+    "FunctionNode(name='${name ?: "\$Anonymous\$"}', parameters='${parameters.joinToString(", ") { if (it is DefaultParameter) "(Default: ${it.value})" else "(${it.name})" }}', body: ($body))"
 }
 
 class ImplementNode(var name: String) : Node {
@@ -38,11 +32,12 @@ class BinaryNode(var op: String, var left: Node, var right: Node) : Node {
 }
 
 class CallNode(var name: String, var args: List<Node>) : Node {
-
   override fun toString() = "CallNode(name = '$name', args = ${if (args.isEmpty()) "[]" else args.joinToString()})"
 }
 
 class BlockNode(var body: MutableList<Node>) : Node {
+  constructor(statement: Node) : this(mutableListOf(statement))
+
   override fun toString() = "BodyNode(body = '${body.joinToString()}')"
 }
 
@@ -103,14 +98,4 @@ class ArrayNode(var data: MutableList<Node>) : Node {
 
 class ImportNode(var import: MutableList<ImportIdentifier>, var from: String) : Node {
   override fun toString() = "Import {${import.joinToString(", ")}} from '$from'"
-}
-
-class SetterNode(var body: BlockNode) : Node {
-  override fun toString() =
-    "SetterNode(body: ($body))"
-}
-
-class GetterNode(var body: BlockNode) : Node {
-  override fun toString() =
-    "GetterNode(body: ($body))"
 }

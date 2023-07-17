@@ -23,6 +23,8 @@ sealed class VariableValue<T>(var value: T, val const: Boolean = false) {
 }
 
 class StringValue(value: String, const: Boolean = false) : VariableValue<String>(value, const) {
+  constructor(value: Char, const: Boolean = false) : this(value.toString(), const)
+
   override val type = VariableType.String
 
   override fun toJSON() = "\"${value.replace("\"", "\\\"")}\""
@@ -33,9 +35,35 @@ class StringValue(value: String, const: Boolean = false) : VariableValue<String>
       addNativeAccessor(
         "length",
         getter = { _, _ -> value.length.toDouble().toVariableValue() },
-        setter = { _, _ -> value.length.toDouble().toVariableValue() })
+        setter = { _, _ -> value.length.toDouble().toVariableValue() }
+      )
+
+      addNativeMethod("last") { _, _ ->
+        StringValue(value.last())
+      }
+
+      addNativeMethod("first") { _, _ ->
+        StringValue(value.first())
+      }
+
+      addNativeMethod("get") { interpreter, arguments ->
+        val num = interpreter.toNumber(arguments.getOrNull(0)).toInt()
+        value.getOrNull(num)?.let { OptionValue.Some(StringValue(it)) } ?: OptionValue.None
+      }
+
+      addNativeMethod("toBool") { _, _ ->
+        value.toBooleanStrict().toVariableValue()
+      }
+      addNativeMethod("toNumber") { _, _ ->
+        value.toDouble().toVariableValue()
+      }
+      addNativeMethod("toArray") { _, _ ->
+        ArrayValue(ArrayData(value.toCharArray().map { it.toString().toVariableValue() }.toMutableList()))
+      }
     }
   }
+
+  fun createIterator() = ArrayData(value.map { it.toString().toVariableValue() }.toMutableList()).createIterator()
 }
 
 class BooleanValue(value: Boolean, const: Boolean = false) : VariableValue<Boolean>(value, const) {
@@ -67,10 +95,10 @@ open class FunctionData(private var declaration: FunctionDeclaration) : PartSCal
 
     for (i in declaration.parameters.indices) {
       val param = declaration.parameters[i]
-      val variable = arguments.getOrNull(i)
+      val variable = arguments.getOrNull(i) ?: continue
       val defaultParam = if (param is DefaultParameter) interpreter.runNode(param.value) else null
 
-      if (variable == null || variable.isNone) {
+      if (variable.isNone) {
         map[declaration.parameters[i].name] = defaultParam ?: OptionValue.None
         continue
       }
@@ -92,7 +120,7 @@ open class FunctionData(private var declaration: FunctionDeclaration) : PartSCal
 class OptionValue(value: Option, const: Boolean = false) : VariableValue<Option>(value, const) {
   override val type = VariableType.Option
 
-  override fun toJSON() = value.data?.prettyPrint() ?: "null"
+  override fun toJSON() = value.data?.toJSON() ?: "null"
   override fun inverseMutability() = OptionValue(value, !const)
 
   override fun prettyPrint(): String {
@@ -124,7 +152,7 @@ class OptionValue(value: Option, const: Boolean = false) : VariableValue<Option>
 
       addNativeMethod("unwrap") { _, _ -> expect("Unwrapped Option.None") }
       addNativeMethod("unwrapOrElse") { _, arguments ->
-        unwrapOr(arguments.getOrElse(0) { None })
+        unwrapOr(arguments.getOrElse(0) { None }.unwrapAll())
       }
     }
   }
@@ -422,7 +450,14 @@ open class PartSInstance(protected val elements: MutableList<EnclosedValue>) {
 
     val returnValue = function.call(interpreter, arguments)
     val curr = interpreter.environment.values
-    elements.map { it.key.prettyPrint().let { key -> if (it.key.value != curr[key]) curr[key] else it.value } }
+
+    elements.mapIndexed { ind, it ->
+      elements[ind] = EnclosedValue(
+        it.key.prettyPrint().toVariableValue(),
+        it.key.prettyPrint().let { key -> if (it.value != curr[key]) curr[key] ?: it.value else it.value },
+        it.static
+      )
+    }
 
     interpreter.environment = interpreter.environment.enclosing!!
     return returnValue

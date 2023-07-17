@@ -16,7 +16,6 @@ class Interpreter {
 
   fun runNode(node: Node): VariableValue<*> = when (node) {
     is LetNode -> runLet(node)
-    is ConstNode -> runConst(node)
     is FunctionNode -> runFunction(node)
     is IfNode -> runIf(node)
     is BlockNode -> runBlock(node).second
@@ -57,7 +56,7 @@ class Interpreter {
   }
 
   private fun runLet(node: LetNode): VariableValue<*> {
-    node.value ?: return environment.define(node.name, OptionValue.None)
+    node.value ?: return environment.define(node.name, OptionValue(Option(null), node.const))
 
     val value = when (val tempNode = node.value as Node) {
       is LiteralNode -> runLiteral(tempNode)
@@ -70,33 +69,16 @@ class Interpreter {
       else -> OptionValue.None
     }
 
-    return value.also { environment.define(node.name, it) }
-  }
-
-  private fun runConst(node: ConstNode): VariableValue<*> {
-    node.value ?: return environment.define(node.name, OptionValue(Option(null), true))
-
-    val value = when (val tempNode = node.value as Node) {
-      is LiteralNode -> runLiteral(tempNode)
-      is FunctionNode -> runFunction(tempNode, declare = false).inverseMutability()
-      is ObjectNode -> runObject(tempNode).inverseMutability()
-      is DotNode -> runDot(normaliseDot(tempNode)).inverseMutability()
-      is ArrayNode -> runArray(tempNode).inverseMutability()
-      is RangeNode -> runRange(tempNode).inverseMutability()
-      is CallNode -> runCall(tempNode).inverseMutability()
-      else -> OptionValue(Option(null), true)
-    }
-
-    return value.also { environment.define(node.name, it) }
+    return value.also { environment.define(node.name, it.inverseMutability()) }
   }
 
   private fun runFunction(
     node: FunctionNode, declare: Boolean = true
   ): FunctionValue<*> = FunctionData(
-    FunctionDeclaration(node.name, node.parameters, node.body)
+    FunctionDeclaration(node.name ?: "\$Anonymous\$", node.parameters, node.body)
   ).let {
     FunctionValue(it).let { fVal ->
-      if (declare && node.name != "\$Anonymous\$") environment.define(node.name, fVal) as FunctionValue<*> else fVal
+      if (declare && node.name != null) environment.define(node.name!!, fVal) as FunctionValue<*> else fVal
     }
   }
 
@@ -220,11 +202,7 @@ class Interpreter {
     "NULL_ELSE" -> {
       val outcome = runNode(node.left)
 
-      if (outcome is OptionValue && outcome.isSome) {
-        runNode(node.right)
-      } else {
-        outcome
-      }
+      if ((outcome as? OptionValue)?.isNone == true) runNode(node.right) else outcome
     }
 
     else -> OptionValue.None
@@ -295,8 +273,8 @@ class Interpreter {
             }
 
             is LiteralNode -> value
-
-            else -> throw RuntimeError("Unknown node ${node.accessTo} }")
+            is VariableNode -> value.unwrap()
+            else -> throw RuntimeError("Unknown node ${node.accessTo}")
           }
         }
 
@@ -603,32 +581,31 @@ class Interpreter {
   }
 
   private fun runFor(node: ForNode): OptionValue {
-    val condition = when (val temp = runNode(node.range)) {
+    val iteratorObject = when (val temp = runNode(node.range)) {
       is ClassValue<*> -> temp.value
       is ObjectValue<*> -> temp.value
       is ArrayValue -> temp.value.createIterator()
-      else -> throw RuntimeError("Only objects, classes and arrays can be for loop condition")
+      is StringValue -> temp.createIterator()
+      else -> throw RuntimeError("Only objects, classes and arrays (of chars - strings) can be for loop condition")
     }
 
-    val hasNextRaw = condition["hasNext"].expect("There is no 'hasNext' function on the object")
+    val hasNextRaw = iteratorObject["hasNext"].expect("There is no 'hasNext' function on the object")
     if (hasNextRaw !is FunctionValue<*>) throw RuntimeError("'hasNext' is not a function")
     val hasNext = hasNextRaw.value as FunctionData
 
-    val nextRaw = condition["next"].expect("There is no 'next' function on the object")
+    val nextRaw = iteratorObject["next"].expect("There is no 'next' function on the object")
     if (nextRaw !is FunctionValue<*>) throw RuntimeError("'next' is not a function")
     val next = nextRaw.value as FunctionData
 
     val codeBlock = node.body as BlockNode
 
-    var `continue` = toBoolean(condition.runWithContext(hasNext, interpreter, emptyList()))
+    var `continue` = toBoolean(iteratorObject.runWithContext(hasNext, interpreter, emptyList()))
 
     while (`continue`) {
-      val current = condition.runWithContext(next, interpreter, emptyList())
-      condition["current"] = current
+      val current = iteratorObject.runWithContext(next, interpreter, emptyList())
+      iteratorObject["current"] = current
 
-      val blockResult = runBlock(
-        codeBlock, mutableMapOf("it" to current)
-      )
+      val blockResult = runBlock(codeBlock, mutableMapOf("it" to current))
 
       when (blockResult.first) {
         BlockReturn.Continue -> continue
@@ -637,7 +614,7 @@ class Interpreter {
         else -> Unit
       }
 
-      `continue` = toBoolean(condition.runWithContext(hasNext, interpreter, emptyList()))
+      `continue` = toBoolean(iteratorObject.runWithContext(hasNext, interpreter, emptyList()))
     }
 
     return OptionValue.None
@@ -694,8 +671,7 @@ class Interpreter {
           FunctionDeclaration(
             "getter",
             listOf(DefaultParameter("value", VariableNode("#default"))),
-            member.getter?.body
-              ?: Parser(scanTokens("{ return value; }")).parse()[0] as BlockNode
+            member.getter ?: BlockNode(mutableListOf(ReturnNode(VariableNode("value"))))
           )
         )
 
@@ -703,8 +679,7 @@ class Interpreter {
           FunctionDeclaration(
             "setter",
             listOf(FunctionParameter("newValue"), DefaultParameter("defaultValue", VariableNode("#default"))),
-            member.setter?.body
-              ?: BlockNode(mutableListOf(ReturnNode(AssignNode("#default", VariableNode("newValue")))))
+            member.setter ?: BlockNode(mutableListOf(ReturnNode(AssignNode("#default", VariableNode("newValue")))))
           )
         )
 
@@ -805,7 +780,7 @@ class Interpreter {
       is BooleanValue -> thing.value
       is ClassValue<*> -> true
       is FunctionValue<*> -> true
-      is NumberValue -> thing.value >= 0
+      is NumberValue -> thing.value > 0
       is OptionValue -> if (thing.isNone) false else toBoolean(thing.unwrap())
       is StringValue -> thing.value.isNotBlank()
       is ObjectValue<*> -> thing.value.isNotEmpty()
@@ -901,24 +876,6 @@ fun scan(code: String) {
 
   parsed.forEach(::println)
 }
-
-open class ImportIdentifier(val name: String, val alias: String?) {
-  override fun toString() = "$name ${if (alias != null) "as $alias" else ""}"
-}
-
-class ImportAllIdentifier(alias: String?) : ImportIdentifier("all", alias) {
-  override fun toString() = "* ${if (alias != null) "as $alias" else ""}"
-}
-
-open class DefaultProperty(val name: String, val value: Node?, val static: Boolean = false)
-class ExtendedProperty(
-  name: String,
-  defaultValue: Node?,
-  val getter: GetterNode? = null,
-  val setter: SetterNode? = null,
-  static: Boolean = false
-) :
-  DefaultProperty(name, defaultValue, static)
 
 interface PartSCallable {
   fun call(interpreter: Interpreter, arguments: List<OptionValue>): VariableValue<*>

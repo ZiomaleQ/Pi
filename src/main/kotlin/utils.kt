@@ -46,7 +46,8 @@ val logic = listOf(
   LO("||", "OR"), LO("&&", "AND"),
   LO("#>", "OBJ_START"), LO("<#", "OBJ_END"),
   LO("?>", "NULL_ELSE"), LO("<-", "GET"),
-  LO(">-", "SET")
+  LO(">-", "SET"), LO("->", "ARROW_RIGHT"),
+  LO("<-", "ARROW_RIGHT")
 ).groupBy { it.value.length }
 
 data class LO(val value: String, val name: String)
@@ -73,5 +74,23 @@ data class Token(var type: String, var value: String, val length: Int, val line:
     return this.also { parsed = true }
   }
 }
+
+open class ImportIdentifier(val name: String, val alias: String?) {
+  override fun toString() = "$name ${if (alias != null) "as $alias" else ""}"
+}
+
+class ImportAllIdentifier(alias: String?) : ImportIdentifier("all", alias) {
+  override fun toString() = "* ${if (alias != null) "as $alias" else ""}"
+}
+
+open class DefaultProperty(val name: String, val value: Node?, val static: Boolean = false)
+
+class ExtendedProperty(
+  name: String,
+  defaultValue: Node?,
+  val getter: BlockNode? = null,
+  val setter: BlockNode? = null,
+  static: Boolean = false
+) : DefaultProperty(name, defaultValue, static)
 
 class RuntimeError(message: String?) : RuntimeException(message)
