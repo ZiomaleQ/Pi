@@ -348,7 +348,7 @@ class Parser(private val code: MutableList<Token>) {
       }
       expr
     }
-  }
+  }.also { if (peek().type == "SEMICOLON") advance() }
 
   private fun block(checkBrace: Boolean = false): BlockNode {
     if (checkBrace) consume("LEFT_BRACE", "Expect '{' before function body, got ${peek().value}")
