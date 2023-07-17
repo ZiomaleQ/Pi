@@ -69,7 +69,7 @@ class Interpreter {
       else -> OptionValue.None
     }
 
-    return value.also { environment.define(node.name, it.inverseMutability()) }
+    return value.also { environment.define(node.name, if (node.const) it.inverseMutability() else it) }
   }
 
   private fun runFunction(
