@@ -72,7 +72,7 @@ class Parser(private val code: MutableList<Token>) {
       while (peek().type != "RIGHT_BRACE") {
         when (peek().type) {
           "LET", "CONST" -> {
-            val value = runInScope(ParserScope.EXPRESSION).also { last = it }.also { lastName = null }
+            val value = parseTopLevel().also { last = it }.also { lastName = null }
             parameters.add(DefaultProperty((value as LetNode).name, value))
           }
 
