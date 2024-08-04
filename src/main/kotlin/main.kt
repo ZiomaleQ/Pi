@@ -50,6 +50,7 @@ fun runREPL() {
       }
     } catch (err: RuntimeError) {
       println(err.message)
+      err.printStackTrace()
       continue
     }
   }

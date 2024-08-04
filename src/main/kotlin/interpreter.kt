@@ -30,9 +30,10 @@ class Interpreter {
     }
 
     is ReturnNode -> {
-      (environment["print"].unwrap() as FunctionValue<*>).value.call(
-        this,
-        mutableListOf(OptionValue(Option(runNode(node.expr) as? VariableValue<*>)))
+      val os = environment["System"].unwrap()
+      val func = (os as ObjectValue<*>).value["writeLine"]
+      (func as FunctionValue<*>).value.call(
+        this, mutableListOf(runNode(node.expr))
       )
     }
 
@@ -43,9 +44,23 @@ class Interpreter {
     is ClassNode -> runClass(node)
     is ArrayNode -> runArray(node)
     is ImportNode -> runImport(node)
+    is OptionalNode -> runOptional(node)
     else -> {
       throw Error("Unexpected node type '${node}'")
     }
+  }
+
+  private fun runOptional(node: OptionalNode): OptionValue {
+    val body: VariableValue<*>?
+
+    try {
+      body = runNode(node.body)
+    } catch (err: RecoverableError) {
+      println("Suppressed error: ${err.message}")
+      return OptionValue(Option(null))
+    }
+
+    return OptionValue(Option(body))
   }
 
   private fun runLiteral(node: LiteralNode): VariableValue<*> = when (node.type) {
@@ -66,6 +81,8 @@ class Interpreter {
       is ArrayNode -> runArray(tempNode)
       is RangeNode -> runRange(tempNode)
       is CallNode -> runCall(tempNode)
+      is ForNode -> runFor(tempNode)
+      is IfNode -> runIf(tempNode)
       else -> OptionValue.None
     }
 
@@ -89,20 +106,19 @@ class Interpreter {
   }
 
   fun runBlock(
-    node: BlockNode,
-    map: MutableMap<String, VariableValue<*>>? = null
-  ): Pair<BlockReturn, OptionValue> {
+    node: BlockNode, map: MutableMap<String, VariableValue<*>>? = null
+  ): Pair<BlockReturn, VariableValue<*>> {
     environment = environment.enclose()
     if (map != null) for (x in map.keys) environment.define(x, map[x]!!)
 
     var breakReason = BlockReturn.End
-    var returnValue = OptionValue.None
+    var returnValue: VariableValue<*> = OptionValue.None
 
     for (childNode in node.body) {
       when (childNode) {
         is ReturnNode -> {
           breakReason = BlockReturn.Return
-          returnValue = OptionValue.Some(runNode(childNode.expr))
+          returnValue = runNode(childNode.expr)
           break
         }
 
@@ -150,7 +166,7 @@ class Interpreter {
           }
         }
 
-        else -> runNode(childNode)
+        else -> returnValue = runNode(childNode)
       }
     }
 
@@ -210,10 +226,7 @@ class Interpreter {
 
   private fun runCall(node: CallNode): VariableValue<*> =
     when (val value = environment[node.name].expect("Can't find '${node.name}' in current scope")) {
-      is ClassValue<*>, is FunctionValue<*> -> (value.value as PartSCallable).call(
-        this,
-        node.args.map { OptionValue(Option(runNode(it) as? VariableValue<*>)) }
-      )
+      is ClassValue<*>, is FunctionValue<*> -> (value.value as PartSCallable).call(this, node.args.map { runNode(it) })
 
       else -> throw RuntimeError("Variable '${node.name}' is not a function ${environment.toPartsInstance()}")
     }
@@ -226,7 +239,7 @@ class Interpreter {
       is LiteralNode -> OptionValue.Some(runLiteral(node.value as LiteralNode))
       is FunctionNode -> OptionValue.Some(runFunction(node.value as FunctionNode, declare = false))
       is ObjectNode -> OptionValue.Some(runObject(node.value as ObjectNode))
-      else -> OptionValue(Option(runNode(node.value as Node) as? VariableValue<*>))
+      else -> runNode(node.value as Node)
     }
 
     return value.also { environment.assign(node.name, it) }
@@ -247,23 +260,18 @@ class Interpreter {
       is VariableValue<*> -> when (accessFrom) {
         is ObjectValue<*> -> {
           val value = accessFrom.value[objectKey.prettyPrint()]
-          if (value.isNone) return value
 
           return when (node.accessTo) {
-            is CallNode -> value.unwrap().let { unwrappedValue ->
-              when (unwrappedValue) {
-                is FunctionValue<*> -> {
-                  environment = environment.enclose()
-                  environment.copy(accessFrom.value.entries)
-                  val returnValue = unwrappedValue.value.call(
-                    this,
-                    (node.accessTo as CallNode).args.map { OptionValue(Option(runNode(it))) })
-                  environment = environment.enclosing!!
-                  returnValue
-                }
-
-                else -> throw RuntimeError("Member '${objectKey}' is not a function")
+            is CallNode -> when (value) {
+              is FunctionValue<*> -> {
+                environment = environment.enclose()
+                environment.copy(accessFrom.value.entries)
+                val returnValue = value.value.call(this, (node.accessTo as CallNode).args.map { runNode(it) })
+                environment = environment.enclosing!!
+                returnValue
               }
+
+              else -> throw RuntimeError("Member '${objectKey}' is not a function")
             }
 
             is BinaryNode -> {
@@ -272,21 +280,17 @@ class Interpreter {
               value
             }
 
-            is LiteralNode -> value
-            is VariableNode -> value.unwrap()
+            is LiteralNode, is VariableNode -> value
             else -> throw RuntimeError("Unknown node ${node.accessTo}")
           }
         }
 
         is ClassValue<*> -> {
-          val rawValue = accessFrom.value[objectKey.prettyPrint()]
+          val value = accessFrom.value[objectKey.prettyPrint()]
           val rawValueEntry =
             (accessFrom.value as PartSInstance).entries.find { objectKey.prettyPrint() == it.key.prettyPrint() }
 
-          if (rawValue.isNone) return rawValue
           val classInitiated = toBoolean(accessFrom.value["#init"])
-
-          val value = rawValue.unwrap()
 
           if (rawValueEntry?.static == false) {
             if (!classInitiated) {
@@ -307,10 +311,8 @@ class Interpreter {
               is FunctionValue<*> -> {
                 environment = environment.enclose()
                 environment.copy(accessFrom.value.entries)
-                val returnValue = value.value.call(
-                  this,
-                  (node.accessTo as CallNode).args.map { OptionValue(Option(runNode(it) as? VariableValue<*>)) }
-                )
+                val returnValue = value.value.call(this,
+                  (node.accessTo as CallNode).args.map { runNode(it) })
                 environment = environment.enclosing!!
                 returnValue
               }
@@ -318,14 +320,12 @@ class Interpreter {
               else -> throw RuntimeError("Member '${objectKey}' is not a function")
             }
           }
-          return rawValue
+          return value
         }
 
         is ArrayValue -> {
-          val rawValue = accessFrom.value.std[objectKey.prettyPrint()]
-          if (rawValue.isNone) return rawValue
+          val value = accessFrom.value.std[objectKey.prettyPrint()]
 
-          val value = rawValue.unwrap()
           if (value is ClassValue<*> && value.value.superclass is PartsAccessor) {
             val localValue = value.value
 
@@ -340,9 +340,8 @@ class Interpreter {
             return when (value) {
               is FunctionValue<*> -> {
                 environment = environment.enclose()
-                val returnValue = value.value.call(
-                  this,
-                  (node.accessTo as CallNode).args.map { OptionValue(Option(runNode(it) as? VariableValue<*>)) })
+                val returnValue = value.value.call(this,
+                  (node.accessTo as CallNode).args.map { runNode(it) })
                 environment = environment.enclosing!!
                 returnValue
               }
@@ -354,10 +353,8 @@ class Interpreter {
         }
 
         is OptionValue -> {
-          val rawValue = accessFrom.std[objectKey.prettyPrint()]
-          if (rawValue.isNone) return rawValue
+          val value = accessFrom.std[objectKey.prettyPrint()]
 
-          val value = rawValue.unwrap()
           if (value is ClassValue<*> && value.value.superclass is PartsAccessor) {
             val localValue = value.value
 
@@ -372,9 +369,8 @@ class Interpreter {
             return when (value) {
               is FunctionValue<*> -> {
                 environment = environment.enclose()
-                val returnValue = value.value.call(
-                  this,
-                  (node.accessTo as CallNode).args.map { OptionValue(Option(runNode(it) as? VariableValue<*>)) })
+                val returnValue = value.value.call(this,
+                  (node.accessTo as CallNode).args.map { runNode(it) })
                 environment = environment.enclosing!!
                 returnValue
               }
@@ -386,10 +382,8 @@ class Interpreter {
         }
 
         is StringValue -> {
-          val rawValue = accessFrom.std[objectKey.prettyPrint()]
-          if (rawValue.isNone) return rawValue
+          val value = accessFrom.std[objectKey.prettyPrint()]
 
-          val value = rawValue.unwrap()
           if (value is ClassValue<*> && value.value.superclass is PartsAccessor) {
             val localValue = value.value
 
@@ -404,9 +398,36 @@ class Interpreter {
             return when (value) {
               is FunctionValue<*> -> {
                 environment = environment.enclose()
-                val returnValue = value.value.call(
-                  this,
-                  (node.accessTo as CallNode).args.map { OptionValue(Option(runNode(it) as? VariableValue<*>)) })
+                val returnValue = value.value.call(this,
+                  (node.accessTo as CallNode).args.map { runNode(it) })
+                environment = environment.enclosing!!
+                returnValue
+              }
+
+              else -> throw RuntimeError("Member '${objectKey}' is not a function")
+            }
+          }
+          return value
+        }
+
+        is ResultValue -> {
+          val value = accessFrom.std[objectKey.prettyPrint()]
+
+          if (value is ClassValue<*> && value.value.superclass is PartsAccessor) {
+            val localValue = value.value
+
+            environment = environment.enclose()
+            environment.copy(localValue.entries)
+            val returnValue = (environment["getter"].unwrap() as FunctionValue<*>).value.call(this, listOf())
+            environment = environment.enclosing!!
+            return returnValue
+
+          }
+          if (node.accessTo is CallNode) {
+            return when (value) {
+              is FunctionValue<*> -> {
+                environment = environment.enclose()
+                val returnValue = value.value.call(this, (node.accessTo as CallNode).args.map { runNode(it) })
                 environment = environment.enclosing!!
                 returnValue
               }
@@ -423,17 +444,15 @@ class Interpreter {
       }
 
       is PartSInstance -> {
-        val rawValue = accessFrom[objectKey.prettyPrint()]
-        if (rawValue.isNone) return rawValue
-        val value = rawValue.unwrap()
+        val value = accessFrom[objectKey.prettyPrint()]
+
         if (node.accessTo is CallNode) {
           return when (value.type) {
             VariableType.Function -> {
               environment = environment.enclose()
               environment.copy(accessFrom.entries)
-              val returnValue = (value.value as PartSCallable).call(
-                this,
-                (node.accessTo as CallNode).args.map { OptionValue(Option(runNode(it) as? VariableValue<*>)) })
+              val returnValue = (value.value as PartSCallable).call(this,
+                (node.accessTo as CallNode).args.map { runNode(it) })
               environment = environment.enclosing!!
               returnValue
             }
@@ -490,26 +509,20 @@ class Interpreter {
 
             val getFrom = accessFrom.value
             val nodeAt = (node.accessTo as AssignNode)
-            val rawProp = getFrom[nodeAt.name]
-
-            if (rawProp.isNone) return rawProp
-
-            val prop = rawProp.unwrap()
+            val prop = getFrom[nodeAt.name]
 
             if (prop is ClassValue<*> && prop.value.superclass is PartsAccessor) {
-              if (prop.value["setter"].isSome) {
-                val propValue = prop.value["setter"].unwrap()
-                environment = environment.enclose()
-                environment.copy(getFrom.entries)
-                val returnValue = (propValue as FunctionValue<*>).value.call(
-                  this,
-                  listOf(OptionValue(Option(nodeAt.value?.let {
-                    runNode(nodeAt.value!!)
-                  })))
-                )
-                environment = environment.enclosing!!
-                prop.value["#default"] = returnValue
-              }
+              val propSetter = prop.value["setter"]
+
+              environment = environment.enclose()
+              environment.copy(getFrom.entries)
+              val returnValue = (propSetter as FunctionValue<*>).value.call(
+                this, listOf(OptionValue(Option(nodeAt.value?.let {
+                  runNode(nodeAt.value!!)
+                })))
+              )
+              environment = environment.enclosing!!
+              prop.value["#default"] = returnValue
             }
 
             OptionValue.None
@@ -533,24 +546,16 @@ class Interpreter {
 
           is ClassValue<*> -> {
             val getFrom = accessFrom.value
-            val rawProp = getFrom[objectKey.prettyPrint()]
-
-            if (rawProp.isNone) return rawProp
-
-            val prop = rawProp.unwrap()
+            val prop = getFrom[objectKey.prettyPrint()]
 
             if (prop is ClassValue<*> && prop.value.superclass is PartsAccessor) {
-              if (prop.value["setter"].isSome) {
-                val propValue = prop.value["setter"].unwrap()
-                environment = environment.enclose()
-                environment.copy(getFrom.entries)
-                val returnValue = (propValue as FunctionValue<*>).value.call(
-                  this,
-                  listOf(OptionValue(Option(nodeAT.value?.let { runNode(nodeAT.value!!) })))
-                )
-                environment = environment.enclosing!!
-                prop.value["#default"] = returnValue
-              }
+              environment = environment.enclose()
+              environment.copy(getFrom.entries)
+              val returnValue = (prop.value["setter"] as FunctionValue<*>).value.call(
+                this, listOf(OptionValue(Option(nodeAT.value?.let { runNode(nodeAT.value!!) })))
+              )
+              environment = environment.enclosing!!
+              prop.value["#default"] = returnValue
             }
 
             OptionValue.None
@@ -580,7 +585,7 @@ class Interpreter {
     }
   }
 
-  private fun runFor(node: ForNode): OptionValue {
+  private fun runFor(node: ForNode): VariableValue<*> {
     val iteratorObject = when (val temp = runNode(node.range)) {
       is ClassValue<*> -> temp.value
       is ObjectValue<*> -> temp.value
@@ -589,11 +594,13 @@ class Interpreter {
       else -> throw RuntimeError("Only objects, classes and arrays (of chars - strings) can be for loop condition")
     }
 
-    val hasNextRaw = iteratorObject["hasNext"].expect("There is no 'hasNext' function on the object")
+    val hasNextRaw = iteratorObject["hasNext"]
+    if (hasNextRaw is OptionValue && hasNextRaw.isNone) throw RuntimeError("There is no 'hasNext' function on the object")
     if (hasNextRaw !is FunctionValue<*>) throw RuntimeError("'hasNext' is not a function")
     val hasNext = hasNextRaw.value as FunctionData
 
-    val nextRaw = iteratorObject["next"].expect("There is no 'next' function on the object")
+    val nextRaw = iteratorObject["next"]
+    if (nextRaw is OptionValue && nextRaw.isNone) throw RuntimeError("There is no 'next' function on the object")
     if (nextRaw !is FunctionValue<*>) throw RuntimeError("'next' is not a function")
     val next = nextRaw.value as FunctionData
 
@@ -617,7 +624,7 @@ class Interpreter {
       `continue` = toBoolean(iteratorObject.runWithContext(hasNext, interpreter, emptyList()))
     }
 
-    return OptionValue.None
+    return iteratorObject["current"]
   }
 
   private fun runRange(node: RangeNode): VariableValue<*> {
@@ -626,9 +633,7 @@ class Interpreter {
 
     val hasNext = FunctionData(
       FunctionDeclaration(
-        "hasNext",
-        listOf(),
-        Parser(scanTokens("{ return (bottom < top) && (current < top);}")).parse()[0] as BlockNode
+        "hasNext", listOf(), Parser(scanTokens("{ return (bottom < top) && (current < top);}")).parse()[0] as BlockNode
       )
     )
 
@@ -639,8 +644,7 @@ class Interpreter {
     )
 
     val clazz = PartSClass(
-      "Range", mutableListOf(),
-      mutableMapOf(
+      "Range", mutableListOf(), mutableMapOf(
         "bottom" to bottom.toVariableValue(),
         "top" to top.toVariableValue(),
         "current" to bottom.toVariableValue(),
@@ -685,9 +689,7 @@ class Interpreter {
 
         val memberClass = PartSClass(
           member.name + "Wrapper", elements = mutableMapOf(
-            "#default" to defaultValue,
-            "getter" to getter.toVariableValue(),
-            "setter" to setter.toVariableValue()
+            "#default" to defaultValue, "getter" to getter.toVariableValue(), "setter" to setter.toVariableValue()
           ).entries.map { EnclosedValue(it.key.toVariableValue(), it.value, false) }.toMutableList()
         )
 
@@ -702,9 +704,7 @@ class Interpreter {
 
     val classBody = environment.values.entries.map {
       EnclosedValue(
-        it.key.toVariableValue(),
-        it.value,
-        node.parameters.find { env -> env.name == it.key }?.static ?: false
+        it.key.toVariableValue(), it.value, node.parameters.find { env -> env.name == it.key }?.static ?: false
       )
     }.toMutableList()
     environment = environment.enclosing!!
@@ -749,11 +749,9 @@ class Interpreter {
             newEnv.values.filter { it.key in exclude }.toMutableMap().let {
               //In this context it will be always defined
               import.alias?.let { alias ->
-                environment.define(
-                  alias,
+                environment.define(alias,
                   PartSInstance(it.entries.map { EnclosedValue(it.key.toVariableValue(), it.value, false) }
-                    .toMutableList()).toVariableValue()
-                )
+                    .toMutableList()).toVariableValue())
               }
             }
           } else {
@@ -784,6 +782,7 @@ class Interpreter {
       is OptionValue -> if (thing.isNone) false else toBoolean(thing.unwrap())
       is StringValue -> thing.value.isNotBlank()
       is ObjectValue<*> -> thing.value.isNotEmpty()
+      is ResultValue -> if (thing.isError) false else toBoolean(thing.unwrap())
     }
 
     is FunctionData -> true
@@ -803,6 +802,7 @@ class Interpreter {
       is OptionValue -> if (thing.isNone) 0 else toNumber(thing.value.unwrap())
       is StringValue -> thing.value.toDoubleOrNull() ?: thing.value.length
       is ObjectValue<*> -> thing.value.size
+      is ResultValue -> if (thing.isError) 0 else toNumber(thing.unwrap())
     }
 
     is FunctionData -> 1
@@ -878,7 +878,7 @@ fun scan(code: String) {
 }
 
 interface PartSCallable {
-  fun call(interpreter: Interpreter, arguments: List<OptionValue>): VariableValue<*>
+  fun call(interpreter: Interpreter, arguments: List<VariableValue<*>>): VariableValue<*>
 }
 
 open class EnclosedValue(val key: VariableValue<*>, val value: VariableValue<*>, val static: Boolean)

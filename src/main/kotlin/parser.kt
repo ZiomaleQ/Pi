@@ -63,6 +63,7 @@ class Parser(private val code: MutableList<Token>) {
       consume("LEFT_BRACE", "Expected '{' after class declaration, got ${peek().value}")
 
       val functions = mutableListOf<FunctionNode>()
+      val operators = mutableListOf<FunctionNode>()
       val parameters = mutableListOf<DefaultProperty>()
       val stubs = mutableListOf<ImplementNode>()
 
@@ -153,6 +154,12 @@ class Parser(private val code: MutableList<Token>) {
             lastName = setterName
           }
 
+          "AT" -> {
+            val function = parseExpression() as FunctionNode
+            function.name ?: error("Expected name after operator declaration, got: ${peek().value}")
+            operators.add(function.also { last = it })
+          }
+
           "FUN" -> {
             val function = parseExpression() as FunctionNode
             function.name ?: error("Expected name after function declaration, got: ${peek().value}")
@@ -182,7 +189,7 @@ class Parser(private val code: MutableList<Token>) {
 
       consume("RIGHT_BRACE", "Expect '}' after class body, got ${peek().value}")
 
-      ClassNode(name.value, functions, parameters, stubs, superclass)
+      ClassNode(name.value, functions, operators, parameters, stubs, superclass)
     }
 
     match("IMPORT") -> when {
@@ -256,6 +263,16 @@ class Parser(private val code: MutableList<Token>) {
       )
     }
 
+    match("FOR") -> {
+      consume("LEFT_PAREN", "Expect '(' after 'for'.")
+      val condition = runInScope(ParserScope.EXPRESSION)
+      consume("RIGHT_PAREN", "Expect ')' after for condition.")
+      ForNode(
+        condition,
+        runInScope(ParserScope.EXPRESSION).let { if (it is BlockNode) it else BlockNode(mutableListOf(it)) }
+      )
+    }
+
     match("FUN") -> {
       val name = if (peek().type == "IDENTIFIER") advance().value else null
 
@@ -296,6 +313,7 @@ class Parser(private val code: MutableList<Token>) {
       var expr = primary()
       while (true) {
         expr = when {
+          match("QUESTION") -> OptionalNode(expr)
           match(
             "AND",
             "OR",
@@ -341,7 +359,15 @@ class Parser(private val code: MutableList<Token>) {
           }
 
           match("LEFT_PAREN") -> finishCall(expr as VariableNode)
-          match("DOT") -> DotNode(expr, runInScope(ParserScope.EXPRESSION))
+          match("DOT") -> {
+            val accessTo = runInScope(ParserScope.EXPRESSION)
+
+            if(accessTo is OptionalNode) {
+              OptionalNode(DotNode(expr, accessTo.body))
+            } else {
+              DotNode(expr, accessTo)
+            }
+          }
           match("TO") -> RangeNode(expr, runInScope(ParserScope.EXPRESSION))
           else -> break
         }

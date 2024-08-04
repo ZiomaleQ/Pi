@@ -1,7 +1,6 @@
 package std.lib
 
 import EnclosedValue
-import RuntimeError
 import kotlinx.serialization.json.*
 import std.*
 
@@ -14,21 +13,29 @@ class JSONStd {
 
 val JSON = PartSNativeClass().apply {
   addNativeMethod("parse") { _, arguments ->
-    val value = arguments.getOrNull(0) ?: return@addNativeMethod OptionValue.None
+    var value = arguments.getOrNull(0) ?: return@addNativeMethod OptionValue.None
 
-    if (value.isNone) return@addNativeMethod OptionValue.None
+    if (value is OptionValue && value.isNone) return@addNativeMethod OptionValue.None
 
-    when (val unwrapped = value.unwrap()) {
-      is StringValue -> JSONStd.fromJSON(unwrapped.value)
-      else -> throw RuntimeError("Expected 'string' in JSON.parse")
+    if (value is OptionValue) {
+      value = value.unwrapAll()
+    }
+
+    when (value) {
+      is StringValue -> ResultValue.Okay(JSONStd.fromJSON(value.value))
+      else -> ResultValue.Error("Expected 'string' in JSON.parse".toVariableValue())
     }
   }
   addNativeMethod("compose") { _, arguments ->
-    val value = arguments.getOrNull(0) ?: return@addNativeMethod OptionValue.None
+    var value = arguments.getOrNull(0) ?: return@addNativeMethod OptionValue.None
 
-    if (value.isNone) return@addNativeMethod OptionValue.None
+    if (value is OptionValue && (value as OptionValue).isNone) return@addNativeMethod OptionValue.None
 
-    JSONStd.toJSON(value.unwrap()).toVariableValue()
+    if (value is OptionValue) {
+      value = (value as OptionValue).unwrapAll()
+    }
+
+    JSONStd.toJSON(value).toVariableValue()
   }
 }.toVariableValue()
 
@@ -37,7 +44,7 @@ fun JsonElement.toVariableValue(): VariableValue<*> = when (this) {
   is JsonObject -> ObjectValue(PartSInstance(entries.map {
     EnclosedValue(it.key.toVariableValue(), it.value.toVariableValue(), false)
   }.toMutableList()))
-
+  is JsonNull -> OptionValue.None
   is JsonPrimitive -> when {
     booleanOrNull != null -> boolean.toVariableValue()
     doubleOrNull != null -> double.toVariableValue()
@@ -45,6 +52,4 @@ fun JsonElement.toVariableValue(): VariableValue<*> = when (this) {
     intOrNull != null -> int.toDouble().toVariableValue()
     else -> content.toVariableValue()
   }
-
-  is JsonNull -> OptionValue.None
 }

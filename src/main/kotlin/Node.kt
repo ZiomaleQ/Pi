@@ -52,12 +52,13 @@ class ForNode(var range: Node, var body: Node) : Node {
 class ClassNode(
   var name: String,
   var functions: MutableList<FunctionNode>,
+  var operators: MutableList<FunctionNode>,
   var parameters: MutableList<DefaultProperty>,
   var stubs: MutableList<ImplementNode>,
   var superclass: String?
 ) : Node {
   override fun toString() =
-    "ClassNode(name = '$name', functions = '${functions.joinToString()}, parameters = '${parameters.joinToString()}, stubs = '${stubs.joinToString()}', superclass = '$superclass')"
+    "ClassNode(name = '$name', functions = '${functions.joinToString()}, operators = '${operators.joinToString()}', parameters = '${parameters.joinToString()}, stubs = '${stubs.joinToString()}', superclass = '$superclass')"
 }
 
 class ReturnNode(var expr: Node) : Node {
@@ -86,6 +87,10 @@ class LiteralNode(var type: VariableType, var value: Any?) : Node {
 
 class DotNode(var accessFrom: Node, var accessTo: Node) : Node {
   override fun toString() = "DotNode(from = '$accessFrom', to = '$accessTo')"
+}
+
+class OptionalNode(var body: Node): Node {
+  override fun toString() = "Optional(from = '$body')"
 }
 
 class RangeNode(var bottom: Node, var top: Node) : Node {

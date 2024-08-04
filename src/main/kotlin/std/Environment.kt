@@ -1,8 +1,6 @@
 package std
 
 import EnclosedValue
-import Interpreter
-import PartSCallable
 import RuntimeError
 import std.lib.JSON
 import std.lib.SystemSTD
@@ -52,18 +50,6 @@ class Environment(var enclosing: Environment? = null) {
     else -> throw RuntimeError("Undefined '$name' reference")
   }
 
-  private fun addNative(name: String, func: (Interpreter, List<OptionValue>) -> VariableValue<*>) {
-    define(name, FunctionValue(object : PartSCallable {
-      override fun call(
-        interpreter: Interpreter, arguments: List<OptionValue>
-      ): VariableValue<*> {
-        return func.invoke(interpreter, arguments)
-      }
-
-      override fun toString(): String = "<native fn $name>"
-    }))
-  }
-
   fun dump(): String {
     var out = ""
     for ((key, value) in values) {
@@ -81,25 +67,26 @@ class Environment(var enclosing: Environment? = null) {
       val env = Environment()
 
       return env.apply {
-        addNative("print") { _, arguments ->
-          arguments
-            .map { if (it.isNone) "Option.None" else it.unwrap().prettyPrint() }
-            .forEach { println(it) }
-          OptionValue.None
-        }
-
-        addNative("time") { _, _ -> NumberValue((System.nanoTime() / 1000L).toDouble()) }
-
         define("Iterable", PartsIterable().toVariableValue())
         define("Option", PartSNativeClass().apply {
           addNativeProp("None", OptionValue.None)
           addNativeMethod("Some") { _, arguments ->
             val value = arguments.getOrNull(0) ?: return@addNativeMethod OptionValue.None
 
-            if (value.isNone) return@addNativeMethod OptionValue.None
-            else OptionValue.Some(value.unwrap())
+            if(value is OptionValue) {
+              val temp = value.unwrapAll()
+
+              if (temp is OptionValue) {
+                OptionValue.None
+              } else {
+                OptionValue.Some(temp)
+              }
+            } else {
+              OptionValue.Some(value)
+            }
           }
         }.toVariableValue())
+
         define("JSON", JSON)
         define("System", SystemSTD)
       }

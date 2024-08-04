@@ -7,6 +7,7 @@ import Interpreter
 import Node
 import Parser
 import PartSCallable
+import RecoverableError
 import RuntimeError
 import scanTokens
 
@@ -32,23 +33,45 @@ class StringValue(value: String, const: Boolean = false) : VariableValue<String>
 
   val std by lazy {
     PartSNativeClass().apply {
-      addNativeAccessor(
-        "length",
+      addNativeAccessor("length",
         getter = { _, _ -> value.length.toDouble().toVariableValue() },
-        setter = { _, _ -> value.length.toDouble().toVariableValue() }
-      )
+        setter = { _, _ -> value.length.toDouble().toVariableValue() })
 
-      addNativeMethod("last") { _, _ ->
-        StringValue(value.last())
-      }
-
-      addNativeMethod("first") { _, _ ->
-        StringValue(value.first())
-      }
+      addNativeMethod("last") { _, _ -> StringValue(value.last()) }
+      addNativeMethod("first") { _, _ -> StringValue(value.first()) }
 
       addNativeMethod("get") { interpreter, arguments ->
         val num = interpreter.toNumber(arguments.getOrNull(0)).toInt()
         value.getOrNull(num)?.let { OptionValue.Some(StringValue(it)) } ?: OptionValue.None
+      }
+
+      addNativeMethod("endsWith") { _, arguments ->
+        val check = arguments.getOrNull(0)
+
+        if (check is StringValue) {
+          BooleanValue(value.endsWith(check.value))
+        } else {
+          BooleanValue(false)
+        }
+      }
+
+      addNativeMethod("startsWith") { _, arguments ->
+        val check = arguments.getOrNull(0)
+
+        if (check is StringValue) {
+          BooleanValue(value.startsWith(check.value))
+        } else {
+          BooleanValue(false)
+        }
+      }
+
+      addNativeMethod("split") { _, arguments ->
+        val check = arguments.getOrNull(0)
+
+        if (check !is StringValue) ArrayValue(ArrayData(mutableListOf(this@StringValue)))
+        else {
+          ArrayValue(ArrayData(value.split(check.value).map { it.toVariableValue() }.toMutableList()))
+        }
       }
 
       addNativeMethod("toBool") { _, _ ->
@@ -90,25 +113,22 @@ class FunctionValue<T : PartSCallable>(value: T, const: Boolean = false) : Varia
 open class FunctionData(private var declaration: FunctionDeclaration) : PartSCallable {
 
   override fun toString() = "${declaration.name} function"
-  override fun call(interpreter: Interpreter, arguments: List<OptionValue>): VariableValue<*> {
+  override fun call(interpreter: Interpreter, arguments: List<VariableValue<*>>): VariableValue<*> {
     val map = mutableMapOf<String, VariableValue<*>>()
 
     for (i in declaration.parameters.indices) {
       val param = declaration.parameters[i]
-      val variable = arguments.getOrNull(i) ?: continue
+      val variable = arguments.getOrNull(i)
       val defaultParam = if (param is DefaultParameter) interpreter.runNode(param.value) else null
 
-      if (variable.isNone) {
-        map[declaration.parameters[i].name] = defaultParam ?: OptionValue.None
-        continue
-      }
-
-      map[declaration.parameters[i].name] = variable.unwrap()
+      map[declaration.parameters[i].name] = variable ?: defaultParam ?: OptionValue.None
     }
 
-    return interpreter.runBlock(declaration.body, map).let {
+    val blockRet = interpreter.runBlock(declaration.body, map)
+
+    return blockRet.let {
       when (it.first) {
-        BlockReturn.Return -> OptionValue.Some(it.second.unwrapAll())
+        BlockReturn.Return -> it.second
         else -> OptionValue.None
       }
     }
@@ -152,7 +172,7 @@ class OptionValue(value: Option, const: Boolean = false) : VariableValue<Option>
 
       addNativeMethod("unwrap") { _, _ -> expect("Unwrapped Option.None") }
       addNativeMethod("unwrapOrElse") { _, arguments ->
-        unwrapOr(arguments.getOrElse(0) { None }.unwrapAll())
+        unwrapOr(arguments.getOrElse(0) { None })
       }
     }
   }
@@ -170,6 +190,75 @@ data class Option(val data: VariableValue<*>?) {
   fun unwrapOr(value: VariableValue<*>) = data ?: value
 
   override fun toString(): String = if (data?.value == null) "null" else data.value.toString()
+}
+
+class ResultValue(value: PartsResult, const: Boolean = false) : VariableValue<PartsResult>(value, const) {
+  override fun toJSON(): String =
+    "{isOk: ${value.isSuccess}, error: ${value.getOrDefault(OptionValue.None).prettyPrint()}"
+
+  override fun toString(): String {
+    return if (value.isSuccess) "Result.Ok(${
+      value.getOrDefault(OptionValue.None).prettyPrint()
+    })" else "Result.Error(${value.error.prettyPrint()})"
+  }
+
+  override fun prettyPrint(): String {
+    return this.toString()
+  }
+
+  override fun inverseMutability(): VariableValue<PartsResult> = ResultValue(value, !const)
+
+  override val type = VariableType.Result
+
+  fun unwrap() = expect("Unwrapped Result.Error")
+  fun unwrapOr(value: VariableValue<*>) = this.value.getOrDefault(value)
+  private fun expect(err: RuntimeError) = if (value.isError) throw err else value.data
+  fun expect(msg: String): VariableValue<*> = expect(RuntimeError(msg))
+
+  val isSuccess: Boolean
+    get() = value.isSuccess
+
+  val isError: Boolean
+    get() = value.isError
+
+  val std by lazy {
+    PartSNativeClass().apply {
+      addNativeProp("isSuccess", isSuccess.toVariableValue())
+      addNativeProp("isError", isError.toVariableValue())
+
+      addNativeProp("error", value.error)
+      addNativeProp("data", value.error)
+
+      addNativeMethod("unwrap") { _, _ -> expect("Unwrapped Result.Error") }
+      addNativeMethod("unwrapOrElse") { _, arguments ->
+        unwrapOr(arguments.getOrElse(0) { OptionValue.None })
+      }
+    }
+  }
+
+  companion object {
+    @Suppress("FunctionName")
+    fun Error(value: VariableValue<*>) = Error(OptionValue.Some(value))
+
+    @Suppress("FunctionName")
+    private fun Error(value: OptionValue) = ResultValue(PartsResult(OptionValue.None, value))
+
+    @Suppress("FunctionName")
+    fun Okay(value: VariableValue<*>) = Okay(OptionValue.Some(value))
+
+    @Suppress("FunctionName")
+    private fun Okay(value: OptionValue) = ResultValue(PartsResult(value, OptionValue.None))
+  }
+}
+
+data class PartsResult(val data: OptionValue, val error: OptionValue) {
+  val isSuccess: Boolean
+    get() = this.error.isNone
+
+  val isError: Boolean
+    get() = this.error.isSome
+
+  fun getOrDefault(defaultValue: VariableValue<*>) = if (isError) defaultValue else data
 }
 
 class ArrayValue(value: ArrayData, const: Boolean = false) : VariableValue<ArrayData>(value, const) {
@@ -200,9 +289,7 @@ class ArrayData(elements: MutableList<VariableValue<*>>) {
     )
     val next = FunctionData(
       FunctionDeclaration(
-        "next",
-        listOf(),
-        Parser(scanTokens("{ index += 1; return data.get(index - 1) }")).parse()[0] as BlockNode
+        "next", listOf(), Parser(scanTokens("{ index += 1; return data.get(index - 1) }")).parse()[0] as BlockNode
       )
     )
 
@@ -243,14 +330,15 @@ class ArrayData(elements: MutableList<VariableValue<*>>) {
         val num = interpreter.toNumber(arguments.getOrNull(0))
 
         val foundIndex = valueList.find { it.index == num.toInt() }
-        OptionValue(Option(foundIndex?.value))
+
+        foundIndex?.value ?: throw RecoverableError("Out of bounds")
       }
 
       addNativeMethod("getOrDefault") { interpreter, arguments ->
         val num = interpreter.toNumber(arguments.getOrNull(0))
 
         val foundIndex = valueList.find { it.index == num.toInt() }
-        OptionValue(Option(foundIndex?.value ?: arguments.getOrNull(1)))
+        foundIndex?.value ?: arguments.getOrElse(1) { _ -> OptionValue.None }
       }
 
       addNativeMethod("set") { interpreter, arguments ->
@@ -265,26 +353,31 @@ class ArrayData(elements: MutableList<VariableValue<*>>) {
       addNativeMethod("merge") { _, arguments ->
         val child = arguments.getOrNull(0) ?: return@addNativeMethod ArrayValue(this@ArrayData)
 
-        child.unwrap().let {
-          if (it is ArrayValue) {
-            ArrayValue(
-              ArrayData(
-                (valueList.map { elt -> elt.value } + it.value.valueList.map { elt -> elt.value }).toMutableList()
-              )
-            )
-          } else {
-            set(valueList.maxOf { elt -> elt.index }, child)
-            ArrayValue(this@ArrayData)
-          }
+        if (child is ArrayValue) {
+          ArrayValue(
+            ArrayData((valueList.map { elt -> elt.value } + child.value.valueList.map { elt -> elt.value }).toMutableList())
+          )
+        } else {
+          set(valueList.maxOf { elt -> elt.index }, child)
+          ArrayValue(this@ArrayData)
         }
       }
 
+      addNativeMethod("map") { interpreter, arguments ->
+        var func = arguments.getOrNull(0) ?: throw RecoverableError("No mapping passed")
 
-      addNativeAccessor(
-        "length",
+        if (func is OptionValue && (func as OptionValue).isSome) func = (func as OptionValue).unwrap()
+
+        if (func !is FunctionValue) throw RecoverableError("Passed invalid mapping function")
+
+        ArrayValue(ArrayData(valueList.map {
+          (func.value as PartSCallable).call(interpreter, listOf(it.value))
+        }.toMutableList()))
+      }
+
+      addNativeAccessor("length",
         getter = { _, _ -> toList().size.toDouble().toVariableValue() },
-        setter = { _, _ -> toList().size.toDouble().toVariableValue() }
-      )
+        setter = { _, _ -> toList().size.toDouble().toVariableValue() })
     }
   }
 
@@ -342,7 +435,7 @@ open class PartSClass(
     return true
   }
 
-  override fun call(interpreter: Interpreter, arguments: List<OptionValue>): VariableValue<*> {
+  override fun call(interpreter: Interpreter, arguments: List<VariableValue<*>>): VariableValue<*> {
     if (elements["#init"]!!.type == VariableType.Boolean && elements["#init"]!!.value == true) {
       throw RuntimeError("Can't call already initialised class")
     }
@@ -407,10 +500,7 @@ open class PartSInstance(protected val elements: MutableList<EnclosedValue>) {
   fun isEmpty() = elements.isEmpty()
   fun isNotEmpty() = elements.isNotEmpty()
 
-  operator fun get(key: String) = when (val value = elements[key] ?: OptionValue.None) {
-    is OptionValue -> if (value.isNone) OptionValue.None else OptionValue.Some(value.unwrapAll())
-    else -> OptionValue.Some(value)
-  }
+  operator fun get(key: String): VariableValue<*> = elements[key] ?: OptionValue.None
 
   operator fun set(key: String, value: VariableValue<*>) {
     val temp = EnclosedValue(key.toVariableValue(), value, false)
@@ -467,10 +557,10 @@ open class PartSInstance(protected val elements: MutableList<EnclosedValue>) {
 }
 
 class PartSNativeClass : PartSInstance(mutableListOf()) {
-  fun addNativeMethod(name: String, method: (Interpreter, List<OptionValue>) -> VariableValue<*>) {
+  fun addNativeMethod(name: String, method: (Interpreter, List<VariableValue<*>>) -> VariableValue<*>) {
     elements[name] = FunctionValue(object : PartSCallable {
       override fun call(
-        interpreter: Interpreter, arguments: List<OptionValue>
+        interpreter: Interpreter, arguments: List<VariableValue<*>>
       ): VariableValue<*> {
         return method.invoke(interpreter, arguments)
       }
@@ -482,28 +572,23 @@ class PartSNativeClass : PartSInstance(mutableListOf()) {
   fun addNativeAccessor(
     name: String,
     defaultValue: VariableValue<*> = OptionValue.None,
-    getter: (Interpreter, List<OptionValue>) -> VariableValue<*>,
-    setter: (Interpreter, List<OptionValue>) -> VariableValue<*>
+    getter: (Interpreter, List<VariableValue<*>>) -> VariableValue<*>,
+    setter: (Interpreter, List<VariableValue<*>>) -> VariableValue<*>
   ) {
-    val memberClass = PartSClass(
-      name + "Wrapper",
-      elements = mutableMapOf(
-        "#default" to defaultValue,
-        "getter" to FunctionValue(
-          object : PartSCallable {
-            override fun call(
-              interpreter: Interpreter, arguments: List<OptionValue>
-            ): VariableValue<*> {
-              return getter.invoke(interpreter, arguments)
-            }
-          }),
-        "setter" to FunctionValue(object : PartSCallable {
-          override fun call(
-            interpreter: Interpreter, arguments: List<OptionValue>
-          ): VariableValue<*> {
-            return setter.invoke(interpreter, arguments)
-          }
-        })
+    val memberClass = PartSClass(name + "Wrapper",
+      elements = mutableMapOf("#default" to defaultValue, "getter" to FunctionValue(object : PartSCallable {
+        override fun call(
+          interpreter: Interpreter, arguments: List<VariableValue<*>>
+        ): VariableValue<*> {
+          return getter.invoke(interpreter, arguments)
+        }
+      }), "setter" to FunctionValue(object : PartSCallable {
+        override fun call(
+          interpreter: Interpreter, arguments: List<VariableValue<*>>
+        ): VariableValue<*> {
+          return setter.invoke(interpreter, arguments)
+        }
+      })
       ).entries.map { EnclosedValue(it.key.toVariableValue(), it.value, false) }.toMutableList()
     )
 
@@ -526,4 +611,6 @@ data class FunctionDeclaration(var name: String, var parameters: List<FunctionPa
 open class FunctionParameter(val name: String)
 class DefaultParameter(name: String, val value: Node) : FunctionParameter(name)
 
-enum class VariableType { String, Boolean, Number, Function, Object, Class, Iterable, Array, PropertyAccessor, Option }
+enum class VariableType {
+  String, Boolean, Number, Function, Object, Class, Iterable, Array, PropertyAccessor, Option, Result;
+}
