@@ -568,6 +568,26 @@ class Interpreter {
       is CallNode -> {
         val objectKey = (node.accessTo as CallNode).name
 
+        if ((node.accessFrom as? VariableNode)?.name == "super" && objectKey == "init" && accessFrom.type == VariableType.Class) {
+          val superclass = environment["super"].expect("There is no superclass in current context").value as PartSClass
+
+          if (toBoolean(superclass["#init"])) {
+            throw RuntimeError("Superclass already initiated")
+          }
+
+          val tempEnv = environment
+
+          environment = Environment.asGlobal()
+
+          val newSuperclass = superclass.call(this, (node.accessTo as CallNode).args.map { runNode(it) })
+
+          environment = tempEnv
+
+          (accessFrom.value as PartSClass).superclass = newSuperclass.value as PartSClass
+
+          return OptionValue.None
+        }
+
         return resolveDot(node, accessFrom, objectKey.toVariableValue())
 
       } // method call
@@ -663,7 +683,7 @@ class Interpreter {
     var superclass: OptionValue = OptionValue.None
 
     if (node.superclass != null) {
-      superclass = OptionValue.Some(environment[node.superclass!!])
+      superclass = environment[node.superclass!!]
       if (superclass.value.unwrap() !is ClassValue<*>) throw RuntimeError("Super class '${node.superclass}' isn't valid class to inherit")
     }
 
@@ -816,25 +836,25 @@ class Interpreter {
     val tests = listOf(
       """let x = 0;""",
       """"I like wolfs";""",
-      """if (true) print("Hack"); else print("I'm hiding!");""",
-      """fun fib(n) { if (n <= 1) return 1; else return fib(n - 1) + fib(n - 2); } print(fib(5));""",
-      """fun fight(should = false) { if(should) print("We fight guys"); else print("We don't fight guys");} fight()""",
-      """let obj = #> x to 0 <#; print(obj.x);""",
-      """let obj = #> x to 0 <#; obj.x = 1; print(obj.x);""",
-      """let obj = #> x to 0 <#; obj.x = 1; print(obj);""",
-      """let range = 1 to 3; for(range) { print(it); }""",
-      """class clazz {fun func() {print("this is called inside class");}} let clas = clazz(); clas.func();""",
-      """class clazz {fun init() {print("this is called on init");}} clazz();""",
-      """class clazz {let x = 0;} print(clazz.x);""",
-      """class clazz {fun func() {print("this is called inside class");}} let clas = clazz(); clas.func();""",
-      """class clazz {let x = 0;fun init() {print(x);}} clazz();""",
-      """class clazz {fun init() {print("hi");}} class clay: clazz{fun init() {super.init();}} clay();""",
-      """class clazz {implement next;} class clazz: clazz{}""",
+      """if (true) System.writeLine("Hack"); else System.writeLine("I'm hiding!");""",
+      """fun fib(n) { if (n <= 1) return 1; else return fib(n - 1) + fib(n - 2); } System.writeLine(fib(5));""",
+      """fun fight(should = false) { if(should) System.writeLine("We fight guys"); else System.writeLine("We don't fight guys");} fight()""",
+      """let obj = #> x to 0 <#; System.writeLine(obj.x);""",
+      """let obj = #> x to 0 <#; obj.x = 1; System.writeLine(obj.x);""",
+      """let obj = #> x to 0 <#; obj.x = 1; System.writeLine(obj);""",
+      """let range = 1 to 3; for(range) { System.writeLine(it); }""",
+      """class clazz {fun func() {System.writeLine("this is called inside class");}} let clas = clazz(); clas.func();""",
+      """class clazz {fun init() {System.writeLine("this is called on init");}} clazz();""",
+      """class clazz {let x = 0;} System.writeLine(clazz.x);""",
+      """class clazz {fun func() {System.writeLine("this is called inside class");}} let clas = clazz(); clas.func();""",
+      """class clazz {let x = 0;fun init() {System.writeLine(x);}} clazz();""",
+      """class clazz {fun init() {System.writeLine("hi");}} class clay: clazz{fun init() {super.init();}} clay();""",
+      """class clazz {implement next;} class clazx: clazz{}""",
       """class ci: Iterable { let top = 10; let bottom = 0; let current = 0;
                 fun hasNext() { return (bottom < top) && (current < top); }
                 fun next() { return current + 1; }}
-                for(ci()) print(it);""",
-      """[2].getOrDefault(1, 5)"""
+                for(ci()) System.writeLine(it);""",
+      """System.writeLine([2].getOrDefault(1, 5))"""
     )
 
     for (test in tests) {

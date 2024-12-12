@@ -258,8 +258,8 @@ class Parser(private val code: MutableList<Token>) {
       consume("RIGHT_PAREN", "Expect ')' after if condition.")
       IfNode(
         condition = condition,
-        thenBranch = runInScope(ParserScope.EXPRESSION),
-        elseBranch = if (match("ELSE")) runInScope(ParserScope.EXPRESSION) else null
+        thenBranch = runInScope(ParserScope.TOP_LEVEL),
+        elseBranch = if (match("ELSE")) runInScope(ParserScope.TOP_LEVEL) else null
       )
     }
 
